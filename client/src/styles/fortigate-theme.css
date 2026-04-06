@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-forti-bg text-forti-text-primary font-sans m-0 p-0;
+  }
+
+  * {
+    @apply border-forti-table-border;
+  }
+}
+
+@layer components {
+  .forti-btn {
+    @apply px-4 py-2 rounded text-sm font-medium transition-colors duration-150;
+  }
+
+  .forti-btn-primary {
+    @apply forti-btn bg-forti-accent text-white hover:bg-forti-accent-hover;
+  }
+
+  .forti-btn-secondary {
+    @apply forti-btn bg-gray-200 text-forti-text-primary hover:bg-gray-300;
+  }
+
+  .forti-btn-danger {
+    @apply forti-btn bg-red-500 text-white hover:bg-red-600;
+  }
+
+  .forti-btn-success {
+    @apply forti-btn bg-forti-accept text-white hover:bg-green-600;
+  }
+
+  .forti-card {
+    @apply bg-forti-card rounded-lg shadow-sm border border-forti-table-border;
+  }
+
+  .forti-table {
+    @apply w-full text-sm text-left;
+  }
+
+  .forti-table thead {
+    @apply bg-forti-table-header text-forti-text-secondary uppercase text-xs tracking-wider;
+  }
+
+  .forti-table th {
+    @apply px-4 py-3 font-medium border-b border-forti-table-border;
+  }
+
+  .forti-table td {
+    @apply px-4 py-3 border-b border-forti-table-border;
+  }
+
+  .forti-table tbody tr:nth-child(even) {
+    @apply bg-forti-table-row-alt;
+  }
+
+  .forti-table tbody tr:hover {
+    @apply bg-blue-50;
+  }
+
+  .forti-input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-forti-accent focus:border-transparent;
+  }
+
+  .forti-select {
+    @apply w-full px-3 py-2 border border-gray-300 rounded text-sm bg-white focus:outline-none focus:ring-2 focus:ring-forti-accent focus:border-transparent;
+  }
+
+  .forti-label {
+    @apply block text-sm font-medium text-forti-text-secondary mb-1;
+  }
+
+  .forti-badge-accept {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800;
+  }
+
+  .forti-badge-deny {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800;
+  }
+
+  .forti-badge-enable {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800;
+  }
+
+  .forti-badge-disable {
+    @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600;
+  }
+
+  .forti-section-header {
+    @apply flex items-center justify-between px-6 py-4 border-b border-forti-table-border;
+  }
+
+  .forti-section-title {
+    @apply text-lg font-semibold text-forti-text-primary;
+  }
+}
