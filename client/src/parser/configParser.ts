@@ -1,0 +1,767 @@
+// ============================================================================
+// FortiOS 7.4 Configuration Parser
+// Parses the "config ... edit ... set ... next ... end" block format
+// ============================================================================
+
+import {
+  FortigateConfig, createDefaultConfig,
+  SystemInterface, SystemGlobal, DHCPServer, Administrator, DNSSettings,
+  StaticRoute, PolicyRoute,
+  FirewallPolicy, FirewallAddress, FirewallAddressGroup,
+  FirewallService, FirewallServiceGroup, FirewallSchedule,
+  FirewallVIP, FirewallIPPool,
+  VPNPhase1, VPNPhase2, SSLVPNSettings, SSLVPNPortal, SSLVPNAuthRule,
+  AntivirusProfile, WebFilterProfile, DNSFilterProfile,
+  AppControlProfile, IPSProfile, SSLInspectionProfile,
+  SDWANConfig, SDWANMember, SDWANHealthCheck, SDWANRule, SDWANZone,
+  TrafficShaper, TrafficShapingPolicy,
+  LDAPServer, RADIUSServer, LocalUser, UserGroup,
+} from '../types/fortigate';
+
+// --- Raw parsed tree types ---
+interface RawEntry {
+  name: string;
+  properties: Record<string, string | string[]>;
+  children: Record<string, RawEntry[]>;
+}
+
+interface RawSection {
+  path: string;
+  entries: RawEntry[];
+  properties: Record<string, string | string[]>;
+}
+
+// --- Tokenizer / Line parser ---
+function tokenizeLine(line: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+  const trimmed = line.trim();
+  while (i < trimmed.length) {
+    if (trimmed[i] === '"') {
+      // Quoted string
+      let j = i + 1;
+      while (j < trimmed.length && trimmed[j] !== '"') {
+        if (trimmed[j] === '\\') j++; // skip escaped char
+        j++;
+      }
+      tokens.push(trimmed.slice(i + 1, j));
+      i = j + 1;
+    } else if (trimmed[i] === ' ' || trimmed[i] === '\t') {
+      i++;
+    } else {
+      let j = i;
+      while (j < trimmed.length && trimmed[j] !== ' ' && trimmed[j] !== '\t') j++;
+      tokens.push(trimmed.slice(i, j));
+      i = j;
+    }
+  }
+  return tokens;
+}
+
+// --- Recursive descent parser ---
+function parseBlock(lines: string[], index: number): { entries: RawEntry[]; properties: Record<string, string | string[]>; endIndex: number } {
+  const entries: RawEntry[] = [];
+  const properties: Record<string, string | string[]> = {};
+  let currentEntry: RawEntry | null = null;
+  let i = index;
+
+  while (i < lines.length) {
+    const tokens = tokenizeLine(lines[i]);
+    if (tokens.length === 0) { i++; continue; }
+
+    const cmd = tokens[0].toLowerCase();
+
+    if (cmd === 'config') {
+      // Nested config block
+      const subPath = tokens.slice(1).join(' ');
+      const result = parseBlock(lines, i + 1);
+      if (currentEntry) {
+        currentEntry.children[subPath] = result.entries;
+        // Also merge properties from sub-block into the entry if no entries exist
+        if (result.entries.length === 0) {
+          for (const [k, v] of Object.entries(result.properties)) {
+            currentEntry.properties[`${subPath}.${k}`] = v;
+          }
+        }
+      } else {
+        // Top-level sub-config
+        for (const entry of result.entries) {
+          entries.push(entry);
+        }
+        Object.assign(properties, result.properties);
+      }
+      i = result.endIndex;
+    } else if (cmd === 'edit') {
+      const entryName = tokens[1] || '';
+      currentEntry = { name: entryName, properties: {}, children: {} };
+      i++;
+    } else if (cmd === 'next') {
+      if (currentEntry) {
+        entries.push(currentEntry);
+        currentEntry = null;
+      }
+      i++;
+    } else if (cmd === 'end') {
+      if (currentEntry) {
+        entries.push(currentEntry);
+        currentEntry = null;
+      }
+      return { entries, properties, endIndex: i + 1 };
+    } else if (cmd === 'set') {
+      const key = tokens[1];
+      const values = tokens.slice(2);
+      const target = currentEntry || { properties } as any;
+      if (currentEntry) {
+        currentEntry.properties[key] = values.length === 1 ? values[0] : values;
+      } else {
+        properties[key] = values.length === 1 ? values[0] : values;
+      }
+      i++;
+    } else if (cmd === 'unset') {
+      i++;
+    } else if (cmd === 'append') {
+      const key = tokens[1];
+      const values = tokens.slice(2);
+      const target = currentEntry ? currentEntry.properties : properties;
+      const existing = target[key];
+      if (Array.isArray(existing)) {
+        target[key] = [...existing, ...values];
+      } else if (existing) {
+        target[key] = [existing as string, ...values];
+      } else {
+        target[key] = values;
+      }
+      i++;
+    } else {
+      i++;
+    }
+  }
+
+  return { entries, properties, endIndex: i };
+}
+
+// --- Top-level parser: splits config into sections ---
+function parseConfigSections(text: string): Map<string, RawSection> {
+  const lines = text.split('\n');
+  const sections = new Map<string, RawSection>();
+  let i = 0;
+
+  while (i < lines.length) {
+    const tokens = tokenizeLine(lines[i]);
+    if (tokens.length === 0) { i++; continue; }
+
+    if (tokens[0].toLowerCase() === 'config') {
+      const path = tokens.slice(1).join(' ');
+      const result = parseBlock(lines, i + 1);
+      sections.set(path, { path, entries: result.entries, properties: result.properties });
+      i = result.endIndex;
+    } else {
+      i++;
+    }
+  }
+
+  return sections;
+}
+
+// --- Helper functions for value extraction ---
+function str(val: string | string[] | undefined, def = ''): string {
+  if (val === undefined) return def;
+  return Array.isArray(val) ? val.join(' ') : val;
+}
+
+function strArr(val: string | string[] | undefined): string[] {
+  if (val === undefined) return [];
+  return Array.isArray(val) ? val : val.split(' ');
+}
+
+function num(val: string | string[] | undefined, def = 0): number {
+  const s = str(val);
+  const n = parseInt(s, 10);
+  return isNaN(n) ? def : n;
+}
+
+function bool(val: string | string[] | undefined, def = false): boolean {
+  const s = str(val).toLowerCase();
+  if (s === 'enable' || s === '1' || s === 'yes') return true;
+  if (s === 'disable' || s === '0' || s === 'no') return false;
+  return def;
+}
+
+function enableDisable(val: string | string[] | undefined, def: 'enable' | 'disable' = 'disable'): 'enable' | 'disable' {
+  const s = str(val).toLowerCase();
+  if (s === 'enable') return 'enable';
+  if (s === 'disable') return 'disable';
+  return def;
+}
+
+// --- Section mappers ---
+
+function mapSystemGlobal(section: RawSection): Partial<SystemGlobal> {
+  const p = section.properties;
+  return {
+    hostname: str(p['hostname'], 'FortiGate'),
+    timezone: str(p['timezone'], 'US/Eastern'),
+    adminSport: num(p['admin-sport'], 443),
+    adminSSHPort: num(p['admin-ssh-port'], 22),
+    adminServerCert: str(p['admin-server-cert'], 'self-sign'),
+    admintimeout: num(p['admintimeout'], 5),
+    language: str(p['language'], 'english'),
+    strongCrypto: bool(p['strong-crypto'], true),
+    sslMinProtoVersion: str(p['ssl-min-proto-version'], 'TLSv1.2'),
+  };
+}
+
+function mapInterfaces(section: RawSection): SystemInterface[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const ipVal = strArr(p['ip']);
+    return {
+      name: e.name,
+      ip: ipVal[0] || '',
+      netmask: ipVal[1] || '',
+      allowaccess: strArr(p['allowaccess']),
+      type: str(p['type'], 'physical') as SystemInterface['type'],
+      vlanid: num(p['vlanid']),
+      interface: str(p['interface']),
+      alias: str(p['alias']),
+      status: str(p['status'], 'up') as 'up' | 'down',
+      speed: str(p['speed'], 'auto'),
+      mtu: num(p['mtu'], 1500),
+      mtuOverride: bool(p['mtu-override']),
+      role: str(p['role'], 'undefined') as SystemInterface['role'],
+      description: str(p['description']),
+      mode: str(p['mode'], 'static') as SystemInterface['mode'],
+      secondaryIP: bool(p['secondary-IP']),
+      secondaryIPs: [],
+      dhcpRelayService: bool(p['dhcp-relay-service']),
+      dhcpRelayIp: strArr(p['dhcp-relay-ip']),
+      defaultgw: bool(p['defaultgw'], true),
+      distance: num(p['distance'], 10),
+      weight: num(p['weight'], 0),
+      lldpTransmission: enableDisable(p['lldp-transmission'], 'enable'),
+      lldpReception: enableDisable(p['lldp-reception'], 'enable'),
+      deviceIdentification: bool(p['device-identification']),
+      estimatedUpstreamBandwidth: num(p['estimated-upstream-bandwidth']),
+      estimatedDownstreamBandwidth: num(p['estimated-downstream-bandwidth']),
+      inbandwidth: num(p['inbandwidth']),
+      outbandwidth: num(p['outbandwidth']),
+    };
+  });
+}
+
+function mapDHCPServers(section: RawSection): DHCPServer[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const ipRanges: DHCPServer['ipRanges'] = [];
+    const children = e.children['ip-range'] || [];
+    for (const child of children) {
+      ipRanges.push({
+        id: num(child.properties['id'] || [child.name]),
+        startIp: str(child.properties['start-ip']),
+        endIp: str(child.properties['end-ip']),
+      });
+    }
+    return {
+      id: parseInt(e.name) || 0,
+      interface: str(p['interface']),
+      status: enableDisable(p['status'], 'enable'),
+      leaseTime: num(p['lease-time'], 86400),
+      defaultGateway: str(p['default-gateway']),
+      netmask: str(p['netmask']),
+      dnsServer1: str(p['dns-server1']),
+      dnsServer2: str(p['dns-server2']),
+      dnsServer3: str(p['dns-server3']),
+      domain: str(p['domain']),
+      winsServer1: str(p['wins-server1']),
+      winsServer2: str(p['wins-server2']),
+      ntpServer1: str(p['ntp-server1']),
+      ntpServer2: str(p['ntp-server2']),
+      ipRanges,
+      reservedAddresses: [],
+      options: [],
+    };
+  });
+}
+
+function mapDNS(section: RawSection): Partial<DNSSettings> {
+  const p = section.properties;
+  return {
+    primary: str(p['primary']),
+    secondary: str(p['secondary']),
+    protocol: str(p['protocol'], 'cleartext') as DNSSettings['protocol'],
+    domain: str(p['domain']),
+    dnsOverTls: str(p['dns-over-tls'], 'disable') as DNSSettings['dnsOverTls'],
+  };
+}
+
+function mapStaticRoutes(section: RawSection): StaticRoute[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const dstArr = strArr(p['dst']);
+    return {
+      seqNum: parseInt(e.name) || 0,
+      dst: dstArr.join(' '),
+      gateway: str(p['gateway']),
+      device: str(p['device']),
+      distance: num(p['distance'], 10),
+      weight: num(p['weight'], 0),
+      priority: num(p['priority'], 1),
+      status: enableDisable(p['status'], 'enable'),
+      comment: str(p['comment']),
+      blackhole: bool(p['blackhole']),
+      sdwan: bool(p['sdwan']),
+      sdwanZone: str(p['sdwan-zone']),
+    };
+  });
+}
+
+function mapPolicyRoutes(section: RawSection): PolicyRoute[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      seqNum: parseInt(e.name) || 0,
+      inputDevice: strArr(p['input-device']),
+      src: str(p['src']),
+      srcNegate: bool(p['src-negate']),
+      dst: str(p['dst']),
+      dstNegate: bool(p['dst-negate']),
+      protocol: num(p['protocol']),
+      startPort: num(p['start-port']),
+      endPort: num(p['end-port']),
+      gateway: str(p['gateway']),
+      outputDevice: str(p['output-device']),
+      status: enableDisable(p['status'], 'enable'),
+      comments: str(p['comments']),
+      tos: str(p['tos']),
+      tosMask: str(p['tos-mask']),
+    };
+  });
+}
+
+function mapFirewallPolicies(section: RawSection): FirewallPolicy[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      policyid: parseInt(e.name) || 0,
+      name: str(p['name']),
+      srcintf: strArr(p['srcintf']),
+      dstintf: strArr(p['dstintf']),
+      srcaddr: strArr(p['srcaddr']),
+      dstaddr: strArr(p['dstaddr']),
+      srcaddrNegate: bool(p['srcaddr-negate']),
+      dstaddrNegate: bool(p['dstaddr-negate']),
+      action: str(p['action'], 'deny') as 'accept' | 'deny',
+      service: strArr(p['service']),
+      serviceNegate: bool(p['service-negate']),
+      schedule: str(p['schedule'], 'always'),
+      nat: bool(p['nat']),
+      ippool: bool(p['ippool']),
+      poolname: strArr(p['poolname']),
+      fixedport: bool(p['fixedport']),
+      status: enableDisable(p['status'], 'enable'),
+      logtraffic: str(p['logtraffic'], 'utm') as FirewallPolicy['logtraffic'],
+      logtrafficStart: bool(p['logtraffic-start']),
+      comments: str(p['comments']),
+      utmStatus: bool(p['utm-status']),
+      avProfile: str(p['av-profile']),
+      webfilterProfile: str(p['webfilter-profile']),
+      dnsfilterProfile: str(p['dnsfilter-profile']),
+      ipsSensor: str(p['ips-sensor']),
+      applicationList: str(p['application-list']),
+      sslSshProfile: str(p['ssl-ssh-profile']),
+      inspectionMode: str(p['inspection-mode'], 'flow') as 'proxy' | 'flow',
+      groups: strArr(p['groups']),
+      users: strArr(p['users']),
+      internet_service: bool(p['internet-service']),
+      internet_service_name: strArr(p['internet-service-name']),
+      internet_service_negate: bool(p['internet-service-negate']),
+      captivePortalExempt: bool(p['captive-portal-exempt']),
+      wccp: bool(p['wccp']),
+      tcpMssSender: num(p['tcp-mss-sender']),
+      tcpMssReceiver: num(p['tcp-mss-receiver']),
+      sessionTtl: num(p['session-ttl']),
+      antiReplay: bool(p['anti-replay'], true),
+      matchVip: bool(p['match-vip']),
+      diffservForward: bool(p['diffserv-forward']),
+      diffservReverse: bool(p['diffserv-reverse']),
+      diffservcodeForward: str(p['diffservcode-forward']),
+      diffservcodeReverse: str(p['diffservcode-rev']),
+    };
+  });
+}
+
+function mapAddresses(section: RawSection): FirewallAddress[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const subnetArr = strArr(p['subnet']);
+    return {
+      name: e.name,
+      type: str(p['type'], 'ipmask') as FirewallAddress['type'],
+      subnet: subnetArr.join(' '),
+      startIp: str(p['start-ip']),
+      endIp: str(p['end-ip']),
+      fqdn: str(p['fqdn']),
+      country: str(p['country']),
+      wildcardFqdn: str(p['wildcard-fqdn']),
+      interface: str(p['associated-interface'] || p['interface']),
+      comment: str(p['comment']),
+      visibility: bool(p['visibility'], true),
+      color: num(p['color']),
+      allowRouting: bool(p['allow-routing']),
+      associatedInterface: str(p['associated-interface']),
+      macaddr: strArr(p['macaddr']),
+    };
+  });
+}
+
+function mapAddressGroups(section: RawSection): FirewallAddressGroup[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      member: strArr(p['member']),
+      comment: str(p['comment']),
+      visibility: bool(p['visibility'], true),
+      color: num(p['color']),
+      exclude: bool(p['exclude']),
+      excludeMember: strArr(p['exclude-member']),
+    };
+  });
+}
+
+function mapServices(section: RawSection): FirewallService[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      category: str(p['category']),
+      protocol: str(p['protocol'], 'TCP/UDP/SCTP') as FirewallService['protocol'],
+      tcpPortrange: str(p['tcp-portrange']),
+      udpPortrange: str(p['udp-portrange']),
+      sctpPortrange: str(p['sctp-portrange']),
+      protocolNumber: num(p['protocol-number']),
+      icmptype: num(p['icmptype']),
+      icmpcode: num(p['icmpcode']),
+      comment: str(p['comment']),
+      visibility: bool(p['visibility'], true),
+      color: num(p['color']),
+      sessionTtl: num(p['session-ttl']),
+      proxy: bool(p['proxy']),
+      iprange: str(p['iprange']),
+      fqdn: str(p['fqdn']),
+    };
+  });
+}
+
+function mapServiceGroups(section: RawSection): FirewallServiceGroup[] {
+  return section.entries.map((e) => ({
+    name: e.name,
+    member: strArr(e.properties['member']),
+    comment: str(e.properties['comment']),
+    color: num(e.properties['color']),
+  }));
+}
+
+function mapSchedules(section: RawSection): FirewallSchedule[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      type: str(p['type'] || p['schedule-type'], 'always') as FirewallSchedule['type'],
+      start: str(p['start']),
+      end: str(p['end']),
+      day: strArr(p['day']),
+      color: num(p['color']),
+    };
+  });
+}
+
+function mapVIPs(section: RawSection): FirewallVIP[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      extip: str(p['extip']),
+      mappedip: strArr(p['mappedip']),
+      extintf: str(p['extintf'], 'any'),
+      portforward: bool(p['portforward']),
+      protocol: str(p['protocol'], 'tcp') as FirewallVIP['protocol'],
+      extport: str(p['extport']),
+      mappedport: str(p['mappedport']),
+      comment: str(p['comment']),
+      color: num(p['color']),
+      type: str(p['type'], 'static-nat') as FirewallVIP['type'],
+      srcintfFilter: strArr(p['srcintf-filter']),
+      srcFilter: strArr(p['src-filter']),
+      natSourceVip: bool(p['nat-source-vip']),
+      arpReply: bool(p['arp-reply'], true),
+      portmappingType: str(p['portmapping-type'], 'one-to-one') as FirewallVIP['portmappingType'],
+      gratuitousArpInterval: num(p['gratuitous-arp-interval']),
+    };
+  });
+}
+
+function mapIPPools(section: RawSection): FirewallIPPool[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      type: str(p['type'], 'overload') as FirewallIPPool['type'],
+      startip: str(p['startip']),
+      endip: str(p['endip']),
+      sourceStartip: str(p['source-startip']),
+      sourceEndip: str(p['source-endip']),
+      arpIntf: str(p['arp-intf']),
+      arpReply: bool(p['arp-reply'], true),
+      comments: str(p['comments']),
+      blockSize: num(p['block-size'], 128),
+      numBlocksPerUser: num(p['num-blocks-per-user'], 8),
+      associatedInterface: str(p['associated-interface']),
+    };
+  });
+}
+
+function mapVPNPhase1(section: RawSection): VPNPhase1[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      type: str(p['type'], 'static') as VPNPhase1['type'],
+      interface: str(p['interface']),
+      ikeVersion: str(p['ike-version'], '2') as '1' | '2',
+      remoteGw: str(p['remote-gw']),
+      localGw: str(p['local-gw'], '0.0.0.0'),
+      psksecret: str(p['psksecret']),
+      peertype: str(p['peertype'], 'any') as VPNPhase1['peertype'],
+      peerid: str(p['peerid']),
+      proposal: strArr(p['proposal']),
+      dhgrp: strArr(p['dhgrp']),
+      natTraversal: str(p['nattraversal'], 'enable') as VPNPhase1['natTraversal'],
+      keepalive: num(p['keepalive'], 10),
+      dpd: str(p['dpd'], 'on-demand') as VPNPhase1['dpd'],
+      dpdRetrycount: num(p['dpd-retrycount'], 3),
+      dpdRetryinterval: num(p['dpd-retryinterval'], 20),
+      comments: str(p['comments']),
+      localid: str(p['localid']),
+      localidType: str(p['localid-type'], 'auto') as VPNPhase1['localidType'],
+      authMethod: str(p['authmethod'], 'psk') as 'psk' | 'signature',
+      certificate: strArr(p['certificate']),
+      keylife: num(p['keylife'], 86400),
+      xauthtype: str(p['xauthtype'], 'disable') as VPNPhase1['xauthtype'],
+      mode: str(p['mode'], 'main') as 'main' | 'aggressive',
+      modeConfig: enableDisable(p['mode-cfg'], 'disable'),
+      ipv4Dns: str(p['ipv4-dns-server1']),
+      ipv4Wins: str(p['ipv4-wins-server1']),
+      ipv4StartIp: str(p['ipv4-start-ip']),
+      ipv4EndIp: str(p['ipv4-end-ip']),
+      ipv4Netmask: str(p['ipv4-netmask']),
+      splitIncludeService: str(p['split-include-service']),
+      splitIncludeAccess: strArr(p['split-include-access']),
+      networkOverlay: enableDisable(p['network-overlay'], 'disable'),
+      networkId: num(p['network-id']),
+    };
+  });
+}
+
+function mapVPNPhase2(section: RawSection): VPNPhase2[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      phase1name: str(p['phase1name']),
+      proposal: strArr(p['proposal']),
+      pfs: enableDisable(p['pfs'], 'enable'),
+      dhgrp: strArr(p['dhgrp']),
+      replay: enableDisable(p['replay'], 'enable'),
+      keepalive: enableDisable(p['keepalive'], 'disable'),
+      autoNegotiate: enableDisable(p['auto-negotiate'], 'enable'),
+      keylifeseconds: num(p['keylifeseconds'], 43200),
+      keylifekbs: num(p['keylifekbs'], 5120),
+      srcSubnet: str(p['src-subnet']),
+      dstSubnet: str(p['dst-subnet']),
+      srcName: str(p['src-name']),
+      dstName: str(p['dst-name']),
+      srcAddrType: str(p['src-addr-type'], 'subnet') as VPNPhase2['srcAddrType'],
+      dstAddrType: str(p['dst-addr-type'], 'subnet') as VPNPhase2['dstAddrType'],
+      comments: str(p['comments']),
+      protocol: str(p['protocol'], 'esp') as 'esp' | 'ah',
+      encapsulation: str(p['encapsulation'], 'tunnel-mode') as VPNPhase2['encapsulation'],
+    };
+  });
+}
+
+function mapTrafficShapers(section: RawSection): TrafficShaper[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      guaranteedBandwidth: num(p['guaranteed-bandwidth']),
+      maximumBandwidth: num(p['maximum-bandwidth']),
+      bandwidthUnit: str(p['bandwidth-unit'], 'kbps') as TrafficShaper['bandwidthUnit'],
+      priority: str(p['priority'], 'medium') as TrafficShaper['priority'],
+      perPolicy: bool(p['per-policy']),
+      diffserv: bool(p['diffserv']),
+      diffservcode: str(p['diffservcode']),
+    };
+  });
+}
+
+function mapLDAP(section: RawSection): LDAPServer[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      server: str(p['server']),
+      secondaryServer: str(p['secondary-server']),
+      tertiaryServer: str(p['tertiary-server']),
+      port: num(p['port'], 389),
+      cnid: str(p['cnid'], 'cn'),
+      dn: str(p['dn']),
+      type: str(p['type'], 'simple') as LDAPServer['type'],
+      username: str(p['username']),
+      password: str(p['password']),
+      secure: str(p['secure'], 'disable') as LDAPServer['secure'],
+      caCert: str(p['ca-cert']),
+      passwordExpiryWarning: bool(p['password-expiry-warning']),
+      passwordRenewal: bool(p['password-renewal']),
+      memberAttr: str(p['member-attr']),
+      groupMemberCheck: str(p['group-member-check'], 'user-attr') as LDAPServer['groupMemberCheck'],
+      groupFilter: str(p['group-filter']),
+      groupSearchBase: str(p['group-search-base']),
+      interface: str(p['interface']),
+      sourceIp: str(p['source-ip']),
+    };
+  });
+}
+
+function mapRADIUS(section: RawSection): RADIUSServer[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      server: str(p['server']),
+      secondaryServer: str(p['secondary-server']),
+      tertiaryServer: str(p['tertiary-server']),
+      secret: str(p['secret']),
+      secondarySecret: str(p['secondary-secret']),
+      tertiarySecret: str(p['tertiary-secret']),
+      port: num(p['auth-port'] || p['port'], 1812),
+      acctPort: num(p['acct-port'], 1813),
+      sourceIp: str(p['source-ip']),
+      allUsergroup: bool(p['all-usergroup'], true),
+      nasIp: str(p['nas-ip']),
+      authType: str(p['auth-type'], 'auto') as RADIUSServer['authType'],
+      radiusCoa: bool(p['radius-coa']),
+      interface: str(p['interface']),
+    };
+  });
+}
+
+function mapLocalUsers(section: RawSection): LocalUser[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      status: enableDisable(p['status'], 'enable'),
+      type: str(p['type'], 'password') as LocalUser['type'],
+      passwd: str(p['passwd']),
+      ldapServer: str(p['ldap-server']),
+      radiusServer: str(p['radius-server']),
+      twoFactor: str(p['two-factor'], 'disable') as LocalUser['twoFactor'],
+      emailTo: str(p['email-to']),
+      smsServer: str(p['sms-server']),
+      fortitoken: str(p['fortitoken']),
+    };
+  });
+}
+
+function mapUserGroups(section: RawSection): UserGroup[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      groupType: str(p['group-type'], 'firewall') as UserGroup['groupType'],
+      member: strArr(p['member']),
+      match: [],
+    };
+  });
+}
+
+// --- Main export ---
+export function parseFortiConfig(text: string): FortigateConfig {
+  const sections = parseConfigSections(text);
+  const config = createDefaultConfig();
+
+  // System
+  const sysGlobal = sections.get('system global');
+  if (sysGlobal) Object.assign(config.system.global, mapSystemGlobal(sysGlobal));
+
+  const sysIntf = sections.get('system interface');
+  if (sysIntf) config.system.interfaces = mapInterfaces(sysIntf);
+
+  const sysDhcp = sections.get('system dhcp server');
+  if (sysDhcp) config.system.dhcpServers = mapDHCPServers(sysDhcp);
+
+  const sysDns = sections.get('system dns');
+  if (sysDns) Object.assign(config.system.dns, mapDNS(sysDns));
+
+  // Router
+  const routerStatic = sections.get('router static');
+  if (routerStatic) config.router.static = mapStaticRoutes(routerStatic);
+
+  const routerPolicy = sections.get('router policy');
+  if (routerPolicy) config.router.policy = mapPolicyRoutes(routerPolicy);
+
+  // Firewall
+  const fwPolicy = sections.get('firewall policy');
+  if (fwPolicy) config.firewallPolicy = mapFirewallPolicies(fwPolicy);
+
+  const fwAddr = sections.get('firewall address');
+  if (fwAddr) config.firewallAddress = mapAddresses(fwAddr);
+
+  const fwAddrGrp = sections.get('firewall addrgrp');
+  if (fwAddrGrp) config.firewallAddrgrp = mapAddressGroups(fwAddrGrp);
+
+  const fwSvc = sections.get('firewall service custom');
+  if (fwSvc) config.firewallService = mapServices(fwSvc);
+
+  const fwSvcGrp = sections.get('firewall service group');
+  if (fwSvcGrp) config.firewallServiceGroup = mapServiceGroups(fwSvcGrp);
+
+  const fwSched = sections.get('firewall schedule recurring');
+  if (fwSched) config.firewallSchedule = mapSchedules(fwSched);
+  const fwSchedOnetime = sections.get('firewall schedule onetime');
+  if (fwSchedOnetime) config.firewallSchedule.push(...mapSchedules(fwSchedOnetime));
+
+  const fwVip = sections.get('firewall vip');
+  if (fwVip) config.firewallVip = mapVIPs(fwVip);
+
+  const fwIppool = sections.get('firewall ippool');
+  if (fwIppool) config.firewallIppool = mapIPPools(fwIppool);
+
+  // VPN
+  const vpnP1 = sections.get('vpn ipsec phase1-interface');
+  if (vpnP1) config.vpnIpsec.phase1 = mapVPNPhase1(vpnP1);
+
+  const vpnP2 = sections.get('vpn ipsec phase2-interface');
+  if (vpnP2) config.vpnIpsec.phase2 = mapVPNPhase2(vpnP2);
+
+  // Traffic shapers
+  const shapers = sections.get('firewall shaper traffic-shaper');
+  if (shapers) config.trafficShaping.shapers = mapTrafficShapers(shapers);
+
+  // User
+  const userLdap = sections.get('user ldap');
+  if (userLdap) config.user.ldap = mapLDAP(userLdap);
+
+  const userRadius = sections.get('user radius');
+  if (userRadius) config.user.radius = mapRADIUS(userRadius);
+
+  const userLocal = sections.get('user local');
+  if (userLocal) config.user.local = mapLocalUsers(userLocal);
+
+  const userGroup = sections.get('user group');
+  if (userGroup) config.user.group = mapUserGroups(userGroup);
+
+  return config;
+}
