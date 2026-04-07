@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import DataTable, { Column } from '../shared/DataTable';
 import EditModal, { FieldDef } from '../shared/EditModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
@@ -7,6 +7,71 @@ import { useProjectStore } from '../../store/projectStore';
 import type { SystemInterface } from '../../types/fortigate';
 
 const PATH = 'system.interfaces';
+
+// Build a grouped interface list: parents first, then sub-interfaces sorted alphabetically
+interface DisplayInterface extends SystemInterface {
+  _isChild: boolean;
+  _originalIndex: number;
+}
+
+function buildGroupedInterfaces(interfaces: SystemInterface[]): DisplayInterface[] {
+  // Track which interfaces are parents (referenced by other interfaces' "interface" field)
+  const childrenByParent = new Map<string, { iface: SystemInterface; origIdx: number }[]>();
+  const parentSet = new Set<string>();
+  const topLevel: { iface: SystemInterface; origIdx: number }[] = [];
+
+  // First pass: identify children and group them
+  interfaces.forEach((iface, idx) => {
+    const parentName = iface.interface;
+    if (parentName && parentName !== iface.name) {
+      // This is a sub-interface (e.g. VLAN on a parent)
+      parentSet.add(parentName);
+      if (!childrenByParent.has(parentName)) {
+        childrenByParent.set(parentName, []);
+      }
+      childrenByParent.get(parentName)!.push({ iface, origIdx: idx });
+    } else {
+      topLevel.push({ iface, origIdx: idx });
+    }
+  });
+
+  // Sort children alphabetically by name
+  for (const children of childrenByParent.values()) {
+    children.sort((a, b) => a.iface.name.localeCompare(b.iface.name, undefined, { numeric: true }));
+  }
+
+  // Sort top-level: parents that have children first, then remaining, alphabetically
+  topLevel.sort((a, b) => {
+    const aHasChildren = childrenByParent.has(a.iface.name);
+    const bHasChildren = childrenByParent.has(b.iface.name);
+    if (aHasChildren && !bHasChildren) return -1;
+    if (!aHasChildren && bHasChildren) return 1;
+    return a.iface.name.localeCompare(b.iface.name, undefined, { numeric: true });
+  });
+
+  // Build result: parent followed by its children
+  const result: DisplayInterface[] = [];
+  for (const { iface, origIdx } of topLevel) {
+    result.push({ ...iface, _isChild: false, _originalIndex: origIdx });
+    const children = childrenByParent.get(iface.name);
+    if (children) {
+      for (const { iface: child, origIdx: childIdx } of children) {
+        result.push({ ...child, _isChild: true, _originalIndex: childIdx });
+      }
+    }
+  }
+
+  // Add any orphaned children whose parent wasn't found in the list
+  for (const [parentName, children] of childrenByParent.entries()) {
+    if (!topLevel.some((t) => t.iface.name === parentName)) {
+      for (const { iface: child, origIdx: childIdx } of children) {
+        result.push({ ...child, _isChild: true, _originalIndex: childIdx });
+      }
+    }
+  }
+
+  return result;
+}
 
 const defaultInterface: SystemInterface = {
   name: '', ip: '', netmask: '', allowaccess: [], type: 'physical', vlanid: 0,
@@ -62,11 +127,22 @@ export default function Interfaces() {
   const [isNew, setIsNew] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  const columns: Column<SystemInterface>[] = [
-    { key: 'name', label: 'Name' },
+  // Group interfaces: parent first, sub-interfaces alphabetically underneath
+  const groupedData = useMemo(() => buildGroupedInterfaces(data), [data]);
+
+  const columns: Column<DisplayInterface>[] = [
+    { key: 'name', label: 'Name', sortable: false, render: (i) => (
+      <span className={i._isChild ? 'pl-6 text-gray-700' : 'font-medium'}>
+        {i._isChild && <span className="text-gray-400 mr-1">&#x2514;</span>}
+        {i.name}
+      </span>
+    )},
     { key: 'alias', label: 'Alias' },
-    { key: 'type', label: 'Type' },
+    { key: 'type', label: 'Type', render: (i) => (
+      <span>{i.type}{i.type === 'vlan' && i.vlanid ? ` (ID: ${i.vlanid})` : ''}</span>
+    )},
     { key: 'ip', label: 'IP / Netmask', render: (i) => i.ip ? `${i.ip} / ${i.netmask}` : '-' },
+    { key: 'interface', label: 'Parent', render: (i) => i.interface || '-' },
     { key: 'role', label: 'Role' },
     { key: 'status', label: 'Status', render: (i) => <StatusBadge value={i.status} /> },
     { key: 'allowaccess', label: 'Admin Access', render: (i) => i.allowaccess.join(', ') || '-' },
@@ -84,12 +160,25 @@ export default function Interfaces() {
       <DataTable
         title="Network Interfaces"
         columns={columns}
-        data={data}
+        data={groupedData}
         getRowKey={(item) => item.name}
         onAdd={() => { setEditing({ item: { ...defaultInterface }, index: -1 }); setIsNew(true); }}
-        onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
-        onDelete={(_, index) => setDeleting(index)}
-        onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onEdit={(item) => {
+          // Use the original index so we update the right item in the store
+          const di = item as DisplayInterface;
+          const { _isChild, _originalIndex, ...cleanItem } = di;
+          setEditing({ item: cleanItem as SystemInterface, index: _originalIndex });
+          setIsNew(false);
+        }}
+        onDelete={(item) => {
+          const di = item as DisplayInterface;
+          setDeleting(di._originalIndex);
+        }}
+        onClone={(item) => {
+          const { _isChild, _originalIndex, ...cleanItem } = item as DisplayInterface;
+          setEditing({ item: { ...(cleanItem as SystemInterface), name: cleanItem.name + '_copy' }, index: -1 });
+          setIsNew(true);
+        }}
       />
 
       {editing && (

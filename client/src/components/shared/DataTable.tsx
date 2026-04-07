@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Plus, Edit2, Trash2, Copy, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
+import { Plus, Edit2, Trash2, Copy, Search, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
 
 export interface Column<T> {
   key: string;
@@ -17,6 +17,7 @@ interface DataTableProps<T> {
   onEdit?: (item: T, index: number) => void;
   onDelete?: (item: T, index: number) => void;
   onClone?: (item: T, index: number) => void;
+  onReorder?: (fromIndex: number, toIndex: number) => void;
   getRowKey?: (item: T, index: number) => string;
   searchFields?: string[];
   emptyMessage?: string;
@@ -30,6 +31,7 @@ export default function DataTable<T extends Record<string, any>>({
   onEdit,
   onDelete,
   onClone,
+  onReorder,
   getRowKey,
   searchFields,
   emptyMessage = 'No entries configured.',
@@ -37,6 +39,11 @@ export default function DataTable<T extends Record<string, any>>({
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  // Drag-and-drop state
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const dragCounter = useRef(0);
 
   const filteredData = useMemo(() => {
     if (!searchQuery.trim()) return data;
@@ -50,6 +57,9 @@ export default function DataTable<T extends Record<string, any>>({
       })
     );
   }, [data, searchQuery, searchFields, columns]);
+
+  // Disable sorting when drag-and-drop is active (no search/sort active)
+  const isDragEnabled = !!onReorder && !searchQuery.trim() && !sortKey;
 
   const sortedData = useMemo(() => {
     if (!sortKey) return filteredData;
@@ -70,6 +80,58 @@ export default function DataTable<T extends Record<string, any>>({
     }
   };
 
+  // Drag handlers
+  const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
+    setDragIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index));
+    // Make the drag image slightly transparent
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '0.5';
+    }
+  }, []);
+
+  const handleDragEnd = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget instanceof HTMLElement) {
+      e.currentTarget.style.opacity = '1';
+    }
+    setDragIndex(null);
+    setDragOverIndex(null);
+    dragCounter.current = 0;
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    dragCounter.current++;
+    setDragOverIndex(index);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    dragCounter.current--;
+    if (dragCounter.current === 0) {
+      setDragOverIndex(null);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, toIndex: number) => {
+    e.preventDefault();
+    const fromIndex = dragIndex;
+    setDragIndex(null);
+    setDragOverIndex(null);
+    dragCounter.current = 0;
+    if (fromIndex !== null && fromIndex !== toIndex && onReorder) {
+      onReorder(fromIndex, toIndex);
+    }
+  }, [dragIndex, onReorder]);
+
+  const hasActions = onEdit || onDelete || onClone;
+  const totalCols = columns.length + (isDragEnabled ? 1 : 0) + (hasActions ? 1 : 0);
+
   return (
     <div className="forti-card">
       {/* Header */}
@@ -87,6 +149,14 @@ export default function DataTable<T extends Record<string, any>>({
               className="forti-input pl-9 w-56 text-xs"
             />
           </div>
+          {sortKey && (
+            <button
+              onClick={() => { setSortKey(null); setSortDir('asc'); }}
+              className="text-xs text-forti-accent hover:text-forti-accent-hover"
+            >
+              Clear sort
+            </button>
+          )}
           {onAdd && (
             <button onClick={onAdd} className="forti-btn-primary flex items-center space-x-1 text-xs">
               <Plus size={14} />
@@ -96,11 +166,21 @@ export default function DataTable<T extends Record<string, any>>({
         </div>
       </div>
 
+      {/* Drag hint */}
+      {onReorder && (searchQuery.trim() || sortKey) && (
+        <div className="px-4 py-1.5 bg-yellow-50 text-xs text-yellow-700 border-b border-yellow-200">
+          Drag-and-drop reordering is disabled while search or sort is active.
+        </div>
+      )}
+
       {/* Table */}
       <div className="overflow-x-auto">
         <table className="forti-table">
           <thead>
             <tr>
+              {isDragEnabled && (
+                <th style={{ width: '40px' }} className="text-center">&nbsp;</th>
+              )}
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -116,7 +196,7 @@ export default function DataTable<T extends Record<string, any>>({
                   </div>
                 </th>
               ))}
-              {(onEdit || onDelete || onClone) && (
+              {hasActions && (
                 <th style={{ width: '120px' }}>Actions</th>
               )}
             </tr>
@@ -124,53 +204,77 @@ export default function DataTable<T extends Record<string, any>>({
           <tbody>
             {sortedData.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (onEdit || onDelete || onClone ? 1 : 0)} className="text-center py-8 text-forti-text-secondary">
+                <td colSpan={totalCols} className="text-center py-8 text-forti-text-secondary">
                   {emptyMessage}
                 </td>
               </tr>
             ) : (
-              sortedData.map((item, index) => (
-                <tr key={getRowKey ? getRowKey(item, index) : index}>
-                  {columns.map((col) => (
-                    <td key={col.key}>
-                      {col.render ? col.render(item, index) : String(item[col.key] ?? '')}
-                    </td>
-                  ))}
-                  {(onEdit || onDelete || onClone) && (
-                    <td>
-                      <div className="flex items-center space-x-1">
-                        {onEdit && (
-                          <button
-                            onClick={() => onEdit(item, index)}
-                            className="p-1 text-forti-accent hover:text-forti-accent-hover rounded"
-                            title="Edit"
-                          >
-                            <Edit2 size={14} />
-                          </button>
-                        )}
-                        {onClone && (
-                          <button
-                            onClick={() => onClone(item, index)}
-                            className="p-1 text-gray-500 hover:text-gray-700 rounded"
-                            title="Clone"
-                          >
-                            <Copy size={14} />
-                          </button>
-                        )}
-                        {onDelete && (
-                          <button
-                            onClick={() => onDelete(item, index)}
-                            className="p-1 text-red-500 hover:text-red-700 rounded"
-                            title="Delete"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))
+              sortedData.map((item, index) => {
+                const isBeingDragged = dragIndex === index;
+                const isDragTarget = dragOverIndex === index && dragIndex !== index;
+
+                return (
+                  <tr
+                    key={getRowKey ? getRowKey(item, index) : index}
+                    className={`${isDragTarget ? 'border-t-2 !border-t-forti-accent bg-blue-50' : ''} ${isBeingDragged ? 'opacity-50' : ''}`}
+                    onDragEnter={isDragEnabled ? (e) => handleDragEnter(e, index) : undefined}
+                    onDragLeave={isDragEnabled ? handleDragLeave : undefined}
+                    onDragOver={isDragEnabled ? handleDragOver : undefined}
+                    onDrop={isDragEnabled ? (e) => handleDrop(e, index) : undefined}
+                  >
+                    {isDragEnabled && (
+                      <td className="text-center cursor-grab active:cursor-grabbing">
+                        <div
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className="inline-flex items-center justify-center text-gray-400 hover:text-gray-600 p-1"
+                        >
+                          <GripVertical size={14} />
+                        </div>
+                      </td>
+                    )}
+                    {columns.map((col) => (
+                      <td key={col.key}>
+                        {col.render ? col.render(item, index) : String(item[col.key] ?? '')}
+                      </td>
+                    ))}
+                    {hasActions && (
+                      <td>
+                        <div className="flex items-center space-x-1">
+                          {onEdit && (
+                            <button
+                              onClick={() => onEdit(item, index)}
+                              className="p-1 text-forti-accent hover:text-forti-accent-hover rounded"
+                              title="Edit"
+                            >
+                              <Edit2 size={14} />
+                            </button>
+                          )}
+                          {onClone && (
+                            <button
+                              onClick={() => onClone(item, index)}
+                              className="p-1 text-gray-500 hover:text-gray-700 rounded"
+                              title="Clone"
+                            >
+                              <Copy size={14} />
+                            </button>
+                          )}
+                          {onDelete && (
+                            <button
+                              onClick={() => onDelete(item, index)}
+                              className="p-1 text-red-500 hover:text-red-700 rounded"
+                              title="Delete"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

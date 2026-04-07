@@ -22,6 +22,7 @@ interface ProjectStore {
   addItem: <T>(path: string, item: T) => void;
   updateItem: <T>(path: string, index: number, item: T) => void;
   removeItem: (path: string, index: number) => void;
+  reorderItems: (path: string, fromIndex: number, toIndex: number) => void;
 }
 
 function getNestedValue(obj: any, path: string): any[] {
@@ -94,6 +95,18 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     const { project } = get();
     const arr = [...getNestedValue(project.config, path)];
     arr.splice(index, 1);
+    const newConfig = setNestedValue(project.config, path, arr);
+    set({
+      project: { ...project, config: newConfig, updatedAt: new Date().toISOString() },
+      isDirty: true,
+    });
+  },
+
+  reorderItems: (path, fromIndex, toIndex) => {
+    const { project } = get();
+    const arr = [...getNestedValue(project.config, path)];
+    const [moved] = arr.splice(fromIndex, 1);
+    arr.splice(toIndex, 0, moved);
     const newConfig = setNestedValue(project.config, path, arr);
     set({
       project: { ...project, config: newConfig, updatedAt: new Date().toISOString() },

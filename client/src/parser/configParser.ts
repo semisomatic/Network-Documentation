@@ -141,6 +141,8 @@ function parseBlock(lines: string[], index: number): { entries: RawEntry[]; prop
 }
 
 // --- Top-level parser: splits config into sections ---
+// Also flattens nested config blocks (e.g. "config system sdwan" > "config members")
+// into separate section entries like "system sdwan members"
 function parseConfigSections(text: string): Map<string, RawSection> {
   const lines = text.split('\n');
   const sections = new Map<string, RawSection>();
@@ -152,7 +154,7 @@ function parseConfigSections(text: string): Map<string, RawSection> {
 
     if (tokens[0].toLowerCase() === 'config') {
       const path = tokens.slice(1).join(' ');
-      const result = parseBlock(lines, i + 1);
+      const result = parseBlockFlat(lines, i + 1, path, sections);
       sections.set(path, { path, entries: result.entries, properties: result.properties });
       i = result.endIndex;
     } else {
@@ -161,6 +163,91 @@ function parseConfigSections(text: string): Map<string, RawSection> {
   }
 
   return sections;
+}
+
+// Like parseBlock but also registers nested config blocks as separate sections
+function parseBlockFlat(
+  lines: string[], index: number, parentPath: string, sections: Map<string, RawSection>
+): { entries: RawEntry[]; properties: Record<string, string | string[]>; endIndex: number } {
+  const entries: RawEntry[] = [];
+  const properties: Record<string, string | string[]> = {};
+  let currentEntry: RawEntry | null = null;
+  let i = index;
+
+  while (i < lines.length) {
+    const tokens = tokenizeLine(lines[i]);
+    if (tokens.length === 0) { i++; continue; }
+
+    const cmd = tokens[0].toLowerCase();
+
+    if (cmd === 'config') {
+      const subPath = tokens.slice(1).join(' ');
+      const fullSubPath = `${parentPath} ${subPath}`;
+      const result = parseBlockFlat(lines, i + 1, fullSubPath, sections);
+
+      // Register as a separate section for flat access
+      sections.set(fullSubPath, { path: fullSubPath, entries: result.entries, properties: result.properties });
+
+      if (currentEntry) {
+        currentEntry.children[subPath] = result.entries;
+        if (result.entries.length === 0) {
+          for (const [k, v] of Object.entries(result.properties)) {
+            currentEntry.properties[`${subPath}.${k}`] = v;
+          }
+        }
+      } else {
+        for (const entry of result.entries) {
+          entries.push(entry);
+        }
+        Object.assign(properties, result.properties);
+      }
+      i = result.endIndex;
+    } else if (cmd === 'edit') {
+      const entryName = tokens[1] || '';
+      currentEntry = { name: entryName, properties: {}, children: {} };
+      i++;
+    } else if (cmd === 'next') {
+      if (currentEntry) {
+        entries.push(currentEntry);
+        currentEntry = null;
+      }
+      i++;
+    } else if (cmd === 'end') {
+      if (currentEntry) {
+        entries.push(currentEntry);
+        currentEntry = null;
+      }
+      return { entries, properties, endIndex: i + 1 };
+    } else if (cmd === 'set') {
+      const key = tokens[1];
+      const values = tokens.slice(2);
+      if (currentEntry) {
+        currentEntry.properties[key] = values.length === 1 ? values[0] : values;
+      } else {
+        properties[key] = values.length === 1 ? values[0] : values;
+      }
+      i++;
+    } else if (cmd === 'unset') {
+      i++;
+    } else if (cmd === 'append') {
+      const key = tokens[1];
+      const values = tokens.slice(2);
+      const target = currentEntry ? currentEntry.properties : properties;
+      const existing = target[key];
+      if (Array.isArray(existing)) {
+        target[key] = [...existing, ...values];
+      } else if (existing) {
+        target[key] = [existing as string, ...values];
+      } else {
+        target[key] = values;
+      }
+      i++;
+    } else {
+      i++;
+    }
+  }
+
+  return { entries, properties, endIndex: i };
 }
 
 // --- Helper functions for value extraction ---
@@ -688,6 +775,132 @@ function mapUserGroups(section: RawSection): UserGroup[] {
 }
 
 // --- Main export ---
+// --- SD-WAN mapper ---
+function mapSDWAN(section: RawSection, allSections: Map<string, RawSection>): Partial<SDWANConfig> {
+  const p = section.properties;
+  const result: Partial<SDWANConfig> = {
+    status: enableDisable(p['status'], 'disable'),
+    loadBalanceMode: str(p['load-balance-mode'], 'source-ip-based') as SDWANConfig['loadBalanceMode'],
+    members: [],
+    healthChecks: [],
+    rules: [],
+    zones: [],
+  };
+
+  // SD-WAN members: "config system sdwan" > "config members" > edit <seq>
+  const membersSection = allSections.get('system sdwan');
+  if (membersSection) {
+    // Parse from entries - the nested "config members" block produces child entries
+    for (const entry of membersSection.entries) {
+      // Entries at top level of system sdwan could be from nested config blocks
+      // Check if the entry has member-like properties
+      const ep = entry.properties;
+      if (ep['interface'] || ep['gateway'] || ep['zone']) {
+        result.members!.push({
+          seqNum: num(undefined, 0) || parseInt(entry.name, 10) || 0,
+          interface: str(ep['interface']),
+          zone: str(ep['zone']),
+          gateway: str(ep['gateway']),
+          source: str(ep['source']),
+          cost: num(ep['cost']),
+          weight: num(ep['weight'], 1),
+          priority: num(ep['priority'], 1),
+          status: enableDisable(ep['status'], 'enable'),
+          comment: str(ep['comment']),
+          volumeRatio: num(ep['volume-ratio'], 1),
+        });
+      }
+    }
+  }
+
+  // Try dedicated sub-sections if the parser split them out
+  const membersSub = allSections.get('system sdwan members');
+  if (membersSub) {
+    for (const entry of membersSub.entries) {
+      const ep = entry.properties;
+      result.members!.push({
+        seqNum: parseInt(entry.name, 10) || 0,
+        interface: str(ep['interface']),
+        zone: str(ep['zone']),
+        gateway: str(ep['gateway']),
+        source: str(ep['source']),
+        cost: num(ep['cost']),
+        weight: num(ep['weight'], 1),
+        priority: num(ep['priority'], 1),
+        status: enableDisable(ep['status'], 'enable'),
+        comment: str(ep['comment']),
+        volumeRatio: num(ep['volume-ratio'], 1),
+      });
+    }
+  }
+
+  // Health checks
+  const healthSub = allSections.get('system sdwan health-check');
+  if (healthSub) {
+    for (const entry of healthSub.entries) {
+      const ep = entry.properties;
+      result.healthChecks!.push({
+        name: entry.name,
+        server: strArr(ep['server']),
+        protocol: str(ep['protocol'], 'ping') as SDWANHealthCheck['protocol'],
+        port: num(ep['port']),
+        interval: num(ep['interval'], 500),
+        failtime: num(ep['failtime'], 5),
+        recovertime: num(ep['recovertime'], 5),
+        thresholdWarningJitter: num(ep['threshold-warning-jitter']),
+        thresholdWarningLatency: num(ep['threshold-warning-latency']),
+        thresholdWarningPacketloss: num(ep['threshold-warning-packetloss']),
+        thresholdAlertJitter: num(ep['threshold-alert-jitter']),
+        thresholdAlertLatency: num(ep['threshold-alert-latency']),
+        thresholdAlertPacketloss: num(ep['threshold-alert-packetloss']),
+        members: strArr(ep['members']).map((s) => parseInt(s, 10) || 0),
+        slaTargets: [],
+      });
+    }
+  }
+
+  // Rules (called "service" in FortiOS config)
+  const rulesSub = allSections.get('system sdwan service');
+  if (rulesSub) {
+    for (const entry of rulesSub.entries) {
+      const ep = entry.properties;
+      result.rules!.push({
+        id: parseInt(entry.name, 10) || 0,
+        name: str(ep['name']),
+        srcAddr: strArr(ep['src']),
+        dstAddr: strArr(ep['dst']),
+        srcIntf: strArr(ep['input-device']),
+        service: strArr(ep['internet-service-name'] || ep['service']),
+        mode: str(ep['mode'], 'sla') as SDWANRule['mode'],
+        healthCheck: str(ep['health-check']),
+        slaId: num(ep['sla-id']),
+        members: strArr(ep['priority-members']).map((s) => parseInt(s, 10) || 0),
+        protocol: num(ep['protocol']),
+        startPort: num(ep['start-port']),
+        endPort: num(ep['end-port']),
+        routeTag: num(ep['route-tag']),
+        status: enableDisable(ep['status'], 'enable'),
+        tieBreak: str(ep['tie-break'], 'zone') as SDWANRule['tieBreak'],
+        internetService: bool(ep['internet-service']),
+        internetServiceName: strArr(ep['internet-service-name']),
+      });
+    }
+  }
+
+  // Zones
+  const zonesSub = allSections.get('system sdwan zone');
+  if (zonesSub) {
+    for (const entry of zonesSub.entries) {
+      result.zones!.push({
+        name: entry.name,
+        members: strArr(entry.properties['members']),
+      });
+    }
+  }
+
+  return result;
+}
+
 export function parseFortiConfig(text: string): FortigateConfig {
   const sections = parseConfigSections(text);
   const config = createDefaultConfig();
@@ -745,6 +958,12 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const vpnP2 = sections.get('vpn ipsec phase2-interface');
   if (vpnP2) config.vpnIpsec.phase2 = mapVPNPhase2(vpnP2);
+
+  // SD-WAN
+  const sdwanSection = sections.get('system sdwan');
+  if (sdwanSection) {
+    Object.assign(config.sdwan, mapSDWAN(sdwanSection, sections));
+  }
 
   // Traffic shapers
   const shapers = sections.get('firewall shaper traffic-shaper');

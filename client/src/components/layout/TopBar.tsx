@@ -1,12 +1,51 @@
-import React, { useRef } from 'react';
-import { Upload, Download, FileText, Save, FolderOpen, Plus, Settings } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Upload, Download, FileText, Save, FolderOpen, Plus, X, Check } from 'lucide-react';
 import { useProjectStore } from '../../store/projectStore';
 import { parseFortiConfig } from '../../parser/configParser';
 import { exportFortiConfig } from '../../parser/configExporter';
 
+const STORAGE_INDEX_KEY = 'fortidoc-project-index';
+
+interface SavedProjectEntry {
+  id: string;
+  name: string;
+  hostname: string;
+  updatedAt: string;
+}
+
+function getProjectIndex(): SavedProjectEntry[] {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_INDEX_KEY) || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveToLocalStorage(project: any) {
+  // Assign an ID if missing
+  if (!project.id) {
+    project = { ...project, id: `local-${Date.now()}` };
+  }
+  // Save project data
+  localStorage.setItem(`fortidoc-project-${project.id}`, JSON.stringify(project));
+  // Update index
+  const index = getProjectIndex().filter((e) => e.id !== project.id);
+  index.unshift({ id: project.id, name: project.name, hostname: project.hostname, updatedAt: project.updatedAt });
+  localStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(index));
+  return project;
+}
+
+function deleteFromLocalStorage(id: string) {
+  localStorage.removeItem(`fortidoc-project-${id}`);
+  const index = getProjectIndex().filter((e) => e.id !== id);
+  localStorage.setItem(STORAGE_INDEX_KEY, JSON.stringify(index));
+}
+
 export default function TopBar() {
   const { project, setProject, setProjectMeta, isDirty, resetProject } = useProjectStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+  const [showLoadModal, setShowLoadModal] = useState(false);
 
   const handleImportConfig = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -16,7 +55,6 @@ export default function TopBar() {
     try {
       const config = parseFortiConfig(text);
       useProjectStore.getState().updateConfig(() => config);
-      // Try to extract hostname from parsed config
       if (config.system.global.hostname) {
         setProjectMeta({ hostname: config.system.global.hostname });
       }
@@ -25,7 +63,6 @@ export default function TopBar() {
       console.error(err);
     }
 
-    // Reset file input
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -41,54 +78,34 @@ export default function TopBar() {
   };
 
   const handleExportPDF = async () => {
-    // Dynamic import to avoid loading PDF libs upfront
     const { generatePDF } = await import('../../components/export/PDFExport');
     generatePDF(project);
   };
 
-  const handleSaveProject = async () => {
-    try {
-      const method = project.id ? 'PUT' : 'POST';
-      const url = project.id ? `/api/projects/${project.id}` : '/api/projects';
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(project),
-      });
-      if (res.ok) {
-        const saved = await res.json();
-        setProject(saved);
-      }
-    } catch {
-      // If backend is not available, save to localStorage
-      localStorage.setItem(`fortidoc-project-${project.id || 'current'}`, JSON.stringify(project));
+  const handleSaveProject = () => {
+    const saved = saveToLocalStorage(project);
+    setProject(saved);
+    setSaveStatus('saved');
+    setTimeout(() => setSaveStatus('idle'), 2000);
+  };
+
+  const handleLoadProject = () => {
+    setShowLoadModal(true);
+  };
+
+  const loadProjectById = (id: string) => {
+    const raw = localStorage.getItem(`fortidoc-project-${id}`);
+    if (raw) {
+      setProject(JSON.parse(raw));
+      setShowLoadModal(false);
     }
   };
 
-  const handleLoadProject = async () => {
-    try {
-      const res = await fetch('/api/projects');
-      if (res.ok) {
-        const projects = await res.json();
-        if (projects.length > 0) {
-          // For now, load the first project. A project picker UI can be added later.
-          const res2 = await fetch(`/api/projects/${projects[0].id}`);
-          if (res2.ok) {
-            const loaded = await res2.json();
-            setProject(loaded);
-            return;
-          }
-        }
-      }
-    } catch {
-      // Try localStorage
-      const saved = localStorage.getItem(`fortidoc-project-${project.id || 'current'}`);
-      if (saved) {
-        setProject(JSON.parse(saved));
-        return;
-      }
-    }
-    alert('No saved projects found.');
+  const handleDeleteSavedProject = (id: string) => {
+    deleteFromLocalStorage(id);
+    // Force re-render by toggling modal
+    setShowLoadModal(false);
+    setTimeout(() => setShowLoadModal(true), 0);
   };
 
   return (
@@ -135,9 +152,9 @@ export default function TopBar() {
           <span>Export PDF</span>
         </button>
 
-        <button onClick={handleSaveProject} className="flex items-center space-x-1 px-3 py-1.5 text-xs bg-green-600 rounded hover:bg-green-700 transition-colors">
-          <Save size={14} />
-          <span>Save</span>
+        <button onClick={handleSaveProject} className={`flex items-center space-x-1 px-3 py-1.5 text-xs rounded transition-colors ${saveStatus === 'saved' ? 'bg-green-500' : 'bg-green-600 hover:bg-green-700'}`}>
+          {saveStatus === 'saved' ? <Check size={14} /> : <Save size={14} />}
+          <span>{saveStatus === 'saved' ? 'Saved!' : 'Save'}</span>
         </button>
 
         <button onClick={handleLoadProject} className="flex items-center space-x-1 px-3 py-1.5 text-xs bg-gray-700 rounded hover:bg-gray-600 transition-colors">
@@ -145,6 +162,52 @@ export default function TopBar() {
           <span>Load</span>
         </button>
       </div>
+
+      {/* Load Project Modal */}
+      {showLoadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+              <h3 className="text-base font-semibold text-gray-900">Load Project</h3>
+              <button onClick={() => setShowLoadModal(false)} className="text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="px-6 py-4 max-h-80 overflow-y-auto">
+              {getProjectIndex().length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-8">No saved projects found.</p>
+              ) : (
+                <div className="space-y-2">
+                  {getProjectIndex().map((entry) => (
+                    <div
+                      key={entry.id}
+                      className="flex items-center justify-between p-3 border border-gray-200 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors"
+                      onClick={() => loadProjectById(entry.id)}
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{entry.name}</div>
+                        <div className="text-xs text-gray-500">{entry.hostname} &middot; {new Date(entry.updatedAt).toLocaleString()}</div>
+                      </div>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSavedProject(entry.id); }}
+                        className="text-red-400 hover:text-red-600 p-1"
+                        title="Delete saved project"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 rounded-b-lg flex justify-end">
+              <button onClick={() => setShowLoadModal(false)} className="px-4 py-2 text-sm text-gray-700 bg-gray-200 rounded hover:bg-gray-300">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
