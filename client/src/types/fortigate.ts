@@ -22,6 +22,7 @@ export interface FortigateConfig {
     dhcpServers: DHCPServer[];
     admins: Administrator[];
     dns: DNSSettings;
+    zones: SystemZone[];
   };
   router: {
     static: StaticRoute[];
@@ -156,6 +157,14 @@ export interface DNSSettings {
   dnsOverTls: 'disable' | 'enable' | 'enforce';
   cacheNotFoundResponses: boolean;
   cacheTtl: number;
+}
+
+// --- System Zone ---
+export interface SystemZone {
+  name: string;
+  interface: string[];
+  intrazone: 'allow' | 'deny';
+  description: string;
 }
 
 // --- Static Route ---
@@ -771,6 +780,7 @@ export function createDefaultConfig(): FortigateConfig {
         cacheNotFoundResponses: false,
         cacheTtl: 1800,
       },
+      zones: [],
     },
     router: {
       static: [],

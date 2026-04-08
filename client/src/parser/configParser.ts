@@ -5,7 +5,7 @@
 
 import {
   FortigateConfig, createDefaultConfig,
-  SystemInterface, SystemGlobal, DHCPServer, Administrator, DNSSettings,
+  SystemInterface, SystemGlobal, DHCPServer, Administrator, DNSSettings, SystemZone,
   StaticRoute, PolicyRoute,
   FirewallPolicy, FirewallAddress, FirewallAddressGroup,
   FirewallService, FirewallServiceGroup, FirewallSchedule,
@@ -379,6 +379,18 @@ function mapDNS(section: RawSection): Partial<DNSSettings> {
     domain: str(p['domain']),
     dnsOverTls: str(p['dns-over-tls'], 'disable') as DNSSettings['dnsOverTls'],
   };
+}
+
+function mapSystemZones(section: RawSection): SystemZone[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      interface: strArr(p['interface']),
+      intrazone: str(p['intrazone'], 'deny') as 'allow' | 'deny',
+      description: str(p['description']),
+    };
+  });
 }
 
 function mapStaticRoutes(section: RawSection): StaticRoute[] {
@@ -917,6 +929,9 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const sysDns = sections.get('system dns');
   if (sysDns) Object.assign(config.system.dns, mapDNS(sysDns));
+
+  const sysZone = sections.get('system zone');
+  if (sysZone) config.system.zones = mapSystemZones(sysZone);
 
   // Router
   const routerStatic = sections.get('router static');

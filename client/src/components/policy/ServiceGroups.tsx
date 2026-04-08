@@ -11,7 +11,7 @@ const defaultGroup: FirewallServiceGroup = { name: '', member: [], comment: '', 
 
 export default function ServiceGroups() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.firewallServiceGroup;
   const services = config.firewallService;
 
@@ -48,6 +48,7 @@ export default function ServiceGroups() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="Service Group" fields={fields} values={editing.item} isNew={isNew}

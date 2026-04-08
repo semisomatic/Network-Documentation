@@ -21,7 +21,7 @@ const fields: FieldDef[] = [
 
 export default function ApplicationControl() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.securityProfiles.applicationControl;
 
   const [editing, setEditing] = useState<{ item: AppControlProfile; index: number } | null>(null);
@@ -48,6 +48,7 @@ export default function ApplicationControl() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="Application Control Profile" fields={fields} values={editing.item} isNew={isNew}

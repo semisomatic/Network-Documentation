@@ -49,7 +49,7 @@ const fields: FieldDef[] = [
 
 export default function WebFilter() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.securityProfiles.webFilter;
 
   const [editing, setEditing] = useState<{ item: WebFilterProfile; index: number } | null>(null);
@@ -78,6 +78,7 @@ export default function WebFilter() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="Web Filter Profile" fields={fields} values={editing.item} isNew={isNew}

@@ -23,7 +23,7 @@ const fields: FieldDef[] = [
 
 export default function UserGroups() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.user.group;
 
   const [editing, setEditing] = useState<{ item: UserGroup; index: number } | null>(null);
@@ -51,6 +51,7 @@ export default function UserGroups() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="User Group" fields={fields} values={editing.item} isNew={isNew}

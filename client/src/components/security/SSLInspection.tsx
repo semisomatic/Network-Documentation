@@ -47,7 +47,7 @@ const fields: FieldDef[] = [
 
 export default function SSLInspection() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.securityProfiles.sslInspection;
 
   const [editing, setEditing] = useState<{ item: SSLInspectionProfile; index: number } | null>(null);
@@ -76,6 +76,7 @@ export default function SSLInspection() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="SSL/SSH Inspection Profile" fields={fields} values={editing.item} isNew={isNew}

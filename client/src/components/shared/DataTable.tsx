@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Copy, Search, ChevronUp, ChevronDown, GripVertical } from 'lucide-react';
+import { Plus, Edit2, Trash2, Copy, Search, ChevronUp, ChevronDown } from 'lucide-react';
 
 export interface Column<T> {
   key: string;
@@ -45,6 +45,8 @@ export default function DataTable<T extends Record<string, any>>({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const dragCounter = useRef(0);
 
+  const canDrag = !!onReorder && !searchQuery.trim() && !sortKey;
+
   const filteredData = useMemo(() => {
     if (!searchQuery.trim()) return data;
     const q = searchQuery.toLowerCase();
@@ -57,9 +59,6 @@ export default function DataTable<T extends Record<string, any>>({
       })
     );
   }, [data, searchQuery, searchFields, columns]);
-
-  // Disable sorting when drag-and-drop is active (no search/sort active)
-  const isDragEnabled = !!onReorder && !searchQuery.trim() && !sortKey;
 
   const sortedData = useMemo(() => {
     if (!sortKey) return filteredData;
@@ -80,14 +79,13 @@ export default function DataTable<T extends Record<string, any>>({
     }
   };
 
-  // Drag handlers
+  // Drag handlers — attached to the whole <tr>
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
     setDragIndex(index);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', String(index));
-    // Make the drag image slightly transparent
     if (e.currentTarget instanceof HTMLElement) {
-      e.currentTarget.style.opacity = '0.5';
+      e.currentTarget.style.opacity = '0.4';
     }
   }, []);
 
@@ -130,7 +128,7 @@ export default function DataTable<T extends Record<string, any>>({
   }, [dragIndex, onReorder]);
 
   const hasActions = onEdit || onDelete || onClone;
-  const totalCols = columns.length + (isDragEnabled ? 1 : 0) + (hasActions ? 1 : 0);
+  const totalCols = columns.length + (hasActions ? 1 : 0);
 
   return (
     <div className="forti-card">
@@ -138,7 +136,6 @@ export default function DataTable<T extends Record<string, any>>({
       <div className="forti-section-header">
         <h2 className="forti-section-title">{title}</h2>
         <div className="flex items-center space-x-3">
-          {/* Search */}
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
@@ -166,7 +163,7 @@ export default function DataTable<T extends Record<string, any>>({
         </div>
       </div>
 
-      {/* Drag hint */}
+      {/* Drag hint when disabled */}
       {onReorder && (searchQuery.trim() || sortKey) && (
         <div className="px-4 py-1.5 bg-yellow-50 text-xs text-yellow-700 border-b border-yellow-200">
           Drag-and-drop reordering is disabled while search or sort is active.
@@ -178,9 +175,6 @@ export default function DataTable<T extends Record<string, any>>({
         <table className="forti-table">
           <thead>
             <tr>
-              {isDragEnabled && (
-                <th style={{ width: '40px' }} className="text-center">&nbsp;</th>
-              )}
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -210,30 +204,25 @@ export default function DataTable<T extends Record<string, any>>({
               </tr>
             ) : (
               sortedData.map((item, index) => {
-                const isBeingDragged = dragIndex === index;
                 const isDragTarget = dragOverIndex === index && dragIndex !== index;
+                const isBeingDragged = dragIndex === index;
 
                 return (
                   <tr
                     key={getRowKey ? getRowKey(item, index) : index}
-                    className={`${isDragTarget ? 'border-t-2 !border-t-forti-accent bg-blue-50' : ''} ${isBeingDragged ? 'opacity-50' : ''}`}
-                    onDragEnter={isDragEnabled ? (e) => handleDragEnter(e, index) : undefined}
-                    onDragLeave={isDragEnabled ? handleDragLeave : undefined}
-                    onDragOver={isDragEnabled ? handleDragOver : undefined}
-                    onDrop={isDragEnabled ? (e) => handleDrop(e, index) : undefined}
+                    draggable={canDrag}
+                    onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
+                    onDragEnd={canDrag ? handleDragEnd : undefined}
+                    onDragEnter={canDrag ? (e) => handleDragEnter(e, index) : undefined}
+                    onDragLeave={canDrag ? handleDragLeave : undefined}
+                    onDragOver={canDrag ? handleDragOver : undefined}
+                    onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
+                    className={`
+                      ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}
+                      ${isDragTarget ? 'border-t-2 !border-t-forti-accent bg-blue-50' : ''}
+                      ${isBeingDragged ? 'opacity-40' : ''}
+                    `}
                   >
-                    {isDragEnabled && (
-                      <td className="text-center cursor-grab active:cursor-grabbing">
-                        <div
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, index)}
-                          onDragEnd={handleDragEnd}
-                          className="inline-flex items-center justify-center text-gray-400 hover:text-gray-600 p-1"
-                        >
-                          <GripVertical size={14} />
-                        </div>
-                      </td>
-                    )}
                     {columns.map((col) => (
                       <td key={col.key}>
                         {col.render ? col.render(item, index) : String(item[col.key] ?? '')}

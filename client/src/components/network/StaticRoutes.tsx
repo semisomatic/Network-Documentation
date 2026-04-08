@@ -30,7 +30,7 @@ const fields: FieldDef[] = [
 
 export default function StaticRoutes() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.router.static;
 
   const [editing, setEditing] = useState<{ item: StaticRoute; index: number } | null>(null);
@@ -70,6 +70,7 @@ export default function StaticRoutes() {
         onAdd={() => { setEditing({ item: { ...defaultRoute, seqNum: data.length > 0 ? Math.max(...data.map(r => r.seqNum)) + 1 : 1 }, index: -1 }); setIsNew(true); }}
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
 
       {editing && (

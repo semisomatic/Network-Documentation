@@ -35,7 +35,7 @@ const fields: FieldDef[] = [
 
 export default function IPPools() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.firewallIppool;
 
   const [editing, setEditing] = useState<{ item: FirewallIPPool; index: number } | null>(null);
@@ -66,6 +66,7 @@ export default function IPPools() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="IP Pool" fields={fields} values={editing.item} isNew={isNew}

@@ -33,6 +33,7 @@ const navStructure: NavItem[] = [
       { id: 'network-static-routes', label: 'Static Routes', icon: Route },
       { id: 'network-policy-routes', label: 'Policy Routes', icon: Route },
       { id: 'network-dns', label: 'DNS', icon: Globe },
+      { id: 'sdwan-config', label: 'SD-WAN', icon: Wifi },
     ],
   },
   {
@@ -73,14 +74,6 @@ const navStructure: NavItem[] = [
     ],
   },
   {
-    id: 'sdwan',
-    label: 'SD-WAN',
-    icon: Wifi,
-    children: [
-      { id: 'sdwan-config', label: 'SD-WAN Configuration', icon: Wifi },
-    ],
-  },
-  {
     id: 'traffic',
     label: 'Traffic Shaping',
     icon: Zap,
@@ -110,7 +103,6 @@ export default function Sidebar() {
     policy: true,
     security: false,
     vpn: false,
-    sdwan: false,
     traffic: false,
     user: false,
   });

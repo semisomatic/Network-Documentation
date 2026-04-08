@@ -57,7 +57,7 @@ const policyFields: FieldDef[] = [
 
 export default function TrafficShaping() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const shapersData = config.trafficShaping.shapers;
   const policiesData = config.trafficShaping.shapingPolicies;
 
@@ -107,6 +107,7 @@ export default function TrafficShaping() {
         onEdit={(item, index) => { setEditingShaper({ item: { ...item }, index }); setIsNewShaper(false); }}
         onDelete={(_, index) => setDeletingShaper(index)}
         onClone={(item) => { setEditingShaper({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNewShaper(true); }}
+        onReorder={(from, to) => reorderItems(PATH_SHAPERS, from, to)}
       />
       {editingShaper && (
         <EditModal title="Traffic Shaper" fields={shaperFields} values={editingShaper.item} isNew={isNewShaper}
@@ -125,6 +126,7 @@ export default function TrafficShaping() {
           onEdit={(item, index) => { setEditingPolicy({ item: { ...item }, index }); setIsNewPolicy(false); }}
           onDelete={(_, index) => setDeletingPolicy(index)}
           onClone={(item) => { setEditingPolicy({ item: { ...item, id: item.id + 1, name: item.name + '_copy' }, index: -1 }); setIsNewPolicy(true); }}
+          onReorder={(from, to) => reorderItems(PATH_POLICIES, from, to)}
         />
       </div>
       {editingPolicy && (

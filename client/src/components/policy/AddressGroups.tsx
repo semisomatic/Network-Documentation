@@ -13,7 +13,7 @@ const defaultGroup: FirewallAddressGroup = {
 
 export default function AddressGroups() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.firewallAddrgrp;
   const addresses = config.firewallAddress;
 
@@ -53,6 +53,7 @@ export default function AddressGroups() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="Address Group" fields={fields} values={editing.item} isNew={isNew}

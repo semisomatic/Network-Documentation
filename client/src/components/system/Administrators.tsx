@@ -35,7 +35,7 @@ const fields: FieldDef[] = [
 
 export default function Administrators() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.system.admins;
 
   const [editing, setEditing] = useState<{ item: Administrator; index: number } | null>(null);
@@ -64,6 +64,7 @@ export default function Administrators() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="Administrator" fields={fields} values={editing.item} isNew={isNew}

@@ -31,7 +31,7 @@ const fields: FieldDef[] = [
 
 export default function Schedules() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.firewallSchedule;
 
   const [editing, setEditing] = useState<{ item: FirewallSchedule; index: number } | null>(null);
@@ -60,6 +60,7 @@ export default function Schedules() {
         onAdd={() => { setEditing({ item: { ...defaultSched }, index: -1 }); setIsNew(true); }}
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="Schedule" fields={fields} values={editing.item} isNew={isNew}

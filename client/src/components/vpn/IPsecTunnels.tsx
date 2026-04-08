@@ -84,7 +84,7 @@ const phase2Fields: FieldDef[] = [
 
 export default function IPsecTunnels() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const phase1Data = config.vpnIpsec.phase1;
   const phase2Data = config.vpnIpsec.phase2;
 
@@ -134,6 +134,7 @@ export default function IPsecTunnels() {
         onEdit={(item, index) => { setEditingP1({ item: { ...item }, index }); setIsNewP1(false); }}
         onDelete={(_, index) => setDeletingP1(index)}
         onClone={(item) => { setEditingP1({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNewP1(true); }}
+        onReorder={(from, to) => reorderItems(PATH_P1, from, to)}
       />
       {editingP1 && (
         <EditModal title="IPsec Phase 1" fields={phase1Fields} values={editingP1.item} isNew={isNewP1}
@@ -152,6 +153,7 @@ export default function IPsecTunnels() {
           onEdit={(item, index) => { setEditingP2({ item: { ...item }, index }); setIsNewP2(false); }}
           onDelete={(_, index) => setDeletingP2(index)}
           onClone={(item) => { setEditingP2({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNewP2(true); }}
+          onReorder={(from, to) => reorderItems(PATH_P2, from, to)}
         />
       </div>
       {editingP2 && (

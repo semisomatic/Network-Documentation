@@ -59,7 +59,7 @@ const ruleFields: FieldDef[] = [
 
 export default function SDWAN() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const membersData = config.sdwan.members;
   const rulesData = config.sdwan.rules;
 
@@ -111,6 +111,7 @@ export default function SDWAN() {
         onEdit={(item, index) => { setEditingMember({ item: { ...item }, index }); setIsNewMember(false); }}
         onDelete={(_, index) => setDeletingMember(index)}
         onClone={(item) => { setEditingMember({ item: { ...item, seqNum: item.seqNum + 1 }, index: -1 }); setIsNewMember(true); }}
+        onReorder={(from, to) => reorderItems(PATH_MEMBERS, from, to)}
       />
       {editingMember && (
         <EditModal title="SD-WAN Member" fields={memberFields} values={editingMember.item} isNew={isNewMember}
@@ -129,6 +130,7 @@ export default function SDWAN() {
           onEdit={(item, index) => { setEditingRule({ item: { ...item }, index }); setIsNewRule(false); }}
           onDelete={(_, index) => setDeletingRule(index)}
           onClone={(item) => { setEditingRule({ item: { ...item, id: item.id + 1, name: item.name + '_copy' }, index: -1 }); setIsNewRule(true); }}
+          onReorder={(from, to) => reorderItems(PATH_RULES, from, to)}
         />
       </div>
       {editingRule && (

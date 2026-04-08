@@ -36,7 +36,7 @@ const fields: FieldDef[] = [
 
 export default function PolicyRoutes() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.router.policy;
 
   const [editing, setEditing] = useState<{ item: PolicyRoute; index: number } | null>(null);
@@ -68,6 +68,7 @@ export default function PolicyRoutes() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, seqNum: item.seqNum + 1 }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="Policy Route" fields={fields} values={editing.item} isNew={isNew}

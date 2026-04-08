@@ -24,7 +24,7 @@ const defaultPolicy: FWPolicy = {
 
 export default function FirewallPolicy() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.firewallPolicy;
 
   const [editing, setEditing] = useState<{ item: FWPolicy; index: number } | null>(null);
@@ -135,6 +135,7 @@ export default function FirewallPolicy() {
           setEditing({ item: { ...item, policyid: nextId, name: item.name + '_copy' }, index: -1 });
           setIsNew(true);
         }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="Firewall Policy" fields={fields} values={editing.item} isNew={isNew}

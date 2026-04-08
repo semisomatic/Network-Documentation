@@ -123,6 +123,19 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- System Zones ---
+  if (config.system.zones && config.system.zones.length > 0) {
+    out += 'config system zone\n';
+    for (const z of config.system.zones) {
+      out += line(1, `edit ${q(z.name)}`);
+      out += setArr(2, 'interface', z.interface);
+      if (z.intrazone && z.intrazone !== 'deny') out += line(2, `set intrazone ${z.intrazone}`);
+      out += setVal(2, 'description', z.description);
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   // --- Static Routes ---
   if (config.router.static.length > 0) {
     out += 'config router static\n';

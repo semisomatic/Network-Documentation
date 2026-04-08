@@ -46,7 +46,7 @@ const fields: FieldDef[] = [
 
 export default function LDAPServers() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem } = useProjectStore();
+  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
   const data = config.user.ldap;
 
   const [editing, setEditing] = useState<{ item: LDAPServer; index: number } | null>(null);
@@ -76,6 +76,7 @@ export default function LDAPServers() {
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
       {editing && (
         <EditModal title="LDAP Server" fields={fields} values={editing.item} isNew={isNew}
