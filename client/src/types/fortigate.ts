@@ -3,7 +3,10 @@
 // ============================================================================
 
 // --- Project ---
+export type HighlightColor = 'red' | 'yellow' | 'green' | 'blue';
+
 export interface FortigateProject {
+  version: number;
   id: string;
   name: string;
   hostname: string;
@@ -12,6 +15,8 @@ export interface FortigateProject {
   createdAt: string;
   updatedAt: string;
   config: FortigateConfig;
+  highlights: Record<string, Record<string, HighlightColor>>;
+  _deletedNames: Record<string, string[]>;
 }
 
 // --- Root Config ---
@@ -851,6 +856,7 @@ export function createDefaultConfig(): FortigateConfig {
 
 export function createDefaultProject(): FortigateProject {
   return {
+    version: 1,
     id: '',
     name: 'New Project',
     hostname: 'FortiGate',
@@ -859,5 +865,15 @@ export function createDefaultProject(): FortigateProject {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     config: createDefaultConfig(),
+    highlights: {},
+    _deletedNames: {},
   };
+}
+
+export function migrateProject(raw: any): FortigateProject {
+  const project = { ...raw };
+  if (!project.version) project.version = 1;
+  if (!project.highlights) project.highlights = {};
+  if (!project._deletedNames) project._deletedNames = {};
+  return project as FortigateProject;
 }

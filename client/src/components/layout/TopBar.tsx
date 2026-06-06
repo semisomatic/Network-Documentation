@@ -3,6 +3,7 @@ import { Upload, Download, FileText, Save, FolderOpen, Plus, Check } from 'lucid
 import { useProjectStore } from '../../store/projectStore';
 import { parseFortiConfig } from '../../parser/configParser';
 import { exportFortiConfig } from '../../parser/configExporter';
+import { migrateProject } from '../../types/fortigate';
 
 export default function TopBar() {
   const { project, setProject, setProjectMeta, isDirty, resetProject } = useProjectStore();
@@ -68,7 +69,7 @@ export default function TopBar() {
     try {
       const parsed = JSON.parse(text);
       if (parsed.config) {
-        setProject(parsed);
+        setProject(migrateProject(parsed));
       } else {
         alert('Invalid project file. Expected a .fortidoc file with project data.');
       }
