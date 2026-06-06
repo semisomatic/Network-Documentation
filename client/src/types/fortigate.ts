@@ -67,6 +67,7 @@ export interface FortigateConfig {
     local: LocalUser[];
     group: UserGroup[];
   };
+  wireless: WirelessConfig;
 }
 
 // --- System Global ---
@@ -857,6 +858,52 @@ export interface UserGroup {
   }>;
 }
 
+// --- FortiAP / Wireless ---
+export interface WirelessVAP {
+  name: string;
+  ssid: string;
+  securityMode: 'open' | 'wpa2-personal' | 'wpa2-enterprise' | 'wpa3-sae' | 'wpa3-enterprise' | 'captive-portal';
+  passphrase: string;
+  authServer: string;
+  vlanid: number;
+  broadcast: boolean;
+  schedule: string;
+  maxClients: number;
+  macFilter: boolean;
+  comment: string;
+}
+
+export interface WirelessWTPProfile {
+  name: string;
+  platform: string;
+  radio1Band: '802.11a' | '802.11b' | '802.11g' | '802.11n' | '802.11ac' | '802.11ax' | '802.11n,g';
+  radio1Channels: string[];
+  radio1Power: number;
+  radio1VapAll: boolean;
+  radio1Vaps: string[];
+  radio2Band: '802.11a' | '802.11b' | '802.11g' | '802.11n' | '802.11ac' | '802.11ax' | '802.11n,g';
+  radio2Channels: string[];
+  radio2Power: number;
+  radio2VapAll: boolean;
+  radio2Vaps: string[];
+  comment: string;
+}
+
+export interface WirelessWTP {
+  id: string;
+  name: string;
+  wtpProfile: string;
+  admin: 'discovered' | 'disable' | 'enable';
+  location: string;
+  comment: string;
+}
+
+export interface WirelessConfig {
+  vaps: WirelessVAP[];
+  wtpProfiles: WirelessWTPProfile[];
+  wtps: WirelessWTP[];
+}
+
 // --- Helper: Default factory functions ---
 
 export function createDefaultConfig(): FortigateConfig {
@@ -965,6 +1012,11 @@ export function createDefaultConfig(): FortigateConfig {
       local: [],
       group: [],
     },
+    wireless: {
+      vaps: [],
+      wtpProfiles: [],
+      wtps: [],
+    },
   };
 }
 
@@ -995,6 +1047,9 @@ export function migrateProject(raw: any): FortigateProject {
     }
     if (!project.config.router.ospf) {
       project.config.router.ospf = createDefaultConfig().router.ospf;
+    }
+    if (!project.config.wireless) {
+      project.config.wireless = createDefaultConfig().wireless;
     }
   }
   return project as FortigateProject;

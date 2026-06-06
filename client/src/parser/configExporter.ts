@@ -602,5 +602,50 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- Wireless VAPs ---
+  if (config.wireless.vaps.length > 0) {
+    out += 'config wireless-controller vap\n';
+    for (const v of config.wireless.vaps) {
+      out += line(1, `edit ${q(v.name)}`);
+      out += setVal(2, 'ssid', v.ssid);
+      if (v.securityMode !== 'open') out += setVal(2, 'security', v.securityMode);
+      out += setVal(2, 'passphrase', v.passphrase);
+      if (v.authServer) out += setVal(2, 'auth', v.authServer);
+      if (v.vlanid) out += setVal(2, 'vlanid', v.vlanid);
+      if (v.maxClients) out += setVal(2, 'max-clients', v.maxClients);
+      if (v.macFilter) out += setVal(2, 'mac-filter', true);
+      out += setVal(2, 'schedule', v.schedule);
+      out += setVal(2, 'comment', v.comment);
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
+  // --- Wireless WTP Profiles ---
+  if (config.wireless.wtpProfiles.length > 0) {
+    out += 'config wireless-controller wtp-profile\n';
+    for (const p of config.wireless.wtpProfiles) {
+      out += line(1, `edit ${q(p.name)}`);
+      out += setVal(2, 'comment', p.comment);
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
+  // --- Wireless WTPs ---
+  if (config.wireless.wtps.length > 0) {
+    out += 'config wireless-controller wtp\n';
+    for (const w of config.wireless.wtps) {
+      out += line(1, `edit ${q(w.id)}`);
+      out += setVal(2, 'name', w.name);
+      out += setVal(2, 'wtp-profile', w.wtpProfile);
+      out += setVal(2, 'admin', w.admin);
+      out += setVal(2, 'location', w.location);
+      out += setVal(2, 'comment', w.comment);
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   return out;
 }

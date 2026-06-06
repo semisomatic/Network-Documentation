@@ -29,6 +29,7 @@ import SSLInspection from './components/security/SSLInspection';
 import IPsecTunnels from './components/vpn/IPsecTunnels';
 import SSLVPNSettings from './components/vpn/SSLVPNSettings';
 import SDWAN from './components/network-extra/SDWAN';
+import FortiAP from './components/network-extra/FortiAP';
 import TrafficShaping from './components/network-extra/TrafficShaping';
 import LDAPServers from './components/user/LDAPServers';
 import RADIUSServers from './components/user/RADIUSServers';
@@ -62,6 +63,7 @@ const sectionMap: Record<string, React.ComponentType> = {
   'vpn-ipsec': IPsecTunnels,
   'vpn-ssl': SSLVPNSettings,
   'sdwan-config': SDWAN,
+  'wireless-fortiap': FortiAP,
   'traffic-shapers': TrafficShaping,
   'traffic-policies': TrafficShaping,
   'user-ldap': LDAPServers,

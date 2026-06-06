@@ -162,6 +162,8 @@ export async function generatePDF(project: FortigateProject) {
   if (c.securityProfiles.sslInspection.length) sections.push('SSL Inspection');
   if (c.vpnIpsec.phase1.length) sections.push('IPsec VPN');
   if (c.system.dhcpServers.length) sections.push('DHCP Servers');
+  if (c.wireless.vaps.length) sections.push('Wireless SSIDs');
+  if (c.wireless.wtps.length) sections.push('Managed Access Points');
   if (c.user.ldap.length) sections.push('LDAP Servers');
   if (c.user.radius.length) sections.push('RADIUS Servers');
   if (c.user.local.length) sections.push('Local Users');
@@ -407,6 +409,24 @@ export async function generatePDF(project: FortigateProject) {
     y = addTable(doc,
       ['ID', 'Interface', 'Gateway', 'Netmask', 'DNS 1', 'DNS 2', 'Status', 'Comments'],
       c.system.dhcpServers.map(d => [String(d.id), d.interface, d.defaultGateway, d.netmask, d.dnsServer1, d.dnsServer2, d.status, d.comments]),
+      y,
+    );
+  }
+
+  // --- FortiAP / Wireless ---
+  if (c.wireless.vaps.length) {
+    y = addSection(doc, 'Wireless SSIDs', y, tocEntries);
+    y = addTable(doc,
+      ['Name', 'SSID', 'Security', 'VLAN', 'Broadcast', 'Max Clients', 'Comment'],
+      c.wireless.vaps.map(v => [v.name, v.ssid, v.securityMode, v.vlanid ? String(v.vlanid) : '-', v.broadcast ? 'Yes' : 'No', v.maxClients ? String(v.maxClients) : '-', v.comment]),
+      y,
+    );
+  }
+  if (c.wireless.wtps.length) {
+    y = addSection(doc, 'Managed Access Points', y, tocEntries);
+    y = addTable(doc,
+      ['Serial / ID', 'Name', 'Profile', 'Admin', 'Location', 'Comment'],
+      c.wireless.wtps.map(w => [w.id, w.name, w.wtpProfile, w.admin, w.location, w.comment]),
       y,
     );
   }

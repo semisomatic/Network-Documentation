@@ -9,6 +9,7 @@ import {
   StaticRoute, PolicyRoute,
   BGPConfig, BGPNeighbor, BGPNetwork,
   OSPFConfig, OSPFArea, OSPFNetwork, OSPFInterface,
+  WirelessVAP, WirelessWTPProfile, WirelessWTP,
   FirewallPolicy, FirewallAddress, FirewallAddressGroup,
   FirewallService, FirewallServiceGroup, FirewallSchedule,
   FirewallVIP, FirewallIPPool,
@@ -581,6 +582,60 @@ function mapOSPF(section: RawSection, sections: Map<string, RawSection>): OSPFCo
   };
 }
 
+function mapWirelessVAPs(section: RawSection): WirelessVAP[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      ssid: str(p['ssid'], e.name),
+      securityMode: str(p['security'], 'open') as WirelessVAP['securityMode'],
+      passphrase: str(p['passphrase']),
+      authServer: str(p['auth']),
+      vlanid: num(p['vlanid']),
+      broadcast: !bool(p['broadcast-suppress']),
+      schedule: str(p['schedule'], 'always'),
+      maxClients: num(p['max-clients']),
+      macFilter: bool(p['mac-filter']),
+      comment: str(p['comment']),
+    };
+  });
+}
+
+function mapWTPProfiles(section: RawSection): WirelessWTPProfile[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      platform: str(p['platform.type']),
+      radio1Band: str(p['radio-1.band'], '802.11ax') as WirelessWTPProfile['radio1Band'],
+      radio1Channels: strArr(p['radio-1.channel']),
+      radio1Power: num(p['radio-1.power-level'], 100),
+      radio1VapAll: bool(p['radio-1.vap-all'], true),
+      radio1Vaps: strArr(p['radio-1.vaps']),
+      radio2Band: str(p['radio-2.band'], '802.11ax') as WirelessWTPProfile['radio2Band'],
+      radio2Channels: strArr(p['radio-2.channel']),
+      radio2Power: num(p['radio-2.power-level'], 100),
+      radio2VapAll: bool(p['radio-2.vap-all'], true),
+      radio2Vaps: strArr(p['radio-2.vaps']),
+      comment: str(p['comment']),
+    };
+  });
+}
+
+function mapWTPs(section: RawSection): WirelessWTP[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      id: e.name,
+      name: str(p['name'], e.name),
+      wtpProfile: str(p['wtp-profile']),
+      admin: str(p['admin'], 'enable') as WirelessWTP['admin'],
+      location: str(p['location']),
+      comment: str(p['comment']),
+    };
+  });
+}
+
 function mapFirewallPolicies(section: RawSection): FirewallPolicy[] {
   return section.entries.map((e) => {
     const p = e.properties;
@@ -1146,6 +1201,16 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const userGroup = sections.get('user group');
   if (userGroup) config.user.group = mapUserGroups(userGroup);
+
+  // Wireless
+  const wirelessVap = sections.get('wireless-controller vap');
+  if (wirelessVap) config.wireless.vaps = mapWirelessVAPs(wirelessVap);
+
+  const wirelessWtpProfile = sections.get('wireless-controller wtp-profile');
+  if (wirelessWtpProfile) config.wireless.wtpProfiles = mapWTPProfiles(wirelessWtpProfile);
+
+  const wirelessWtp = sections.get('wireless-controller wtp');
+  if (wirelessWtp) config.wireless.wtps = mapWTPs(wirelessWtp);
 
   return config;
 }

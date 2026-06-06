@@ -76,6 +76,14 @@ const navStructure: NavItem[] = [
     ],
   },
   {
+    id: 'wireless',
+    label: 'WiFi & Switch',
+    icon: Wifi,
+    children: [
+      { id: 'wireless-fortiap', label: 'FortiAP', icon: Wifi },
+    ],
+  },
+  {
     id: 'traffic',
     label: 'Traffic Shaping',
     icon: Zap,
@@ -105,6 +113,7 @@ export default function Sidebar() {
     policy: true,
     security: false,
     vpn: false,
+    wireless: false,
     traffic: false,
     user: false,
   });
