@@ -108,6 +108,7 @@ export function exportFortiConfig(config: FortigateConfig): string {
       out += setVal(2, 'dns-server1', srv.dnsServer1);
       out += setVal(2, 'dns-server2', srv.dnsServer2);
       out += setVal(2, 'domain', srv.domain);
+      out += setVal(2, 'description', srv.comments);
       if (srv.ipRanges.length > 0) {
         out += line(2, 'config ip-range');
         for (const r of srv.ipRanges) {
@@ -141,7 +142,11 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'config router static\n';
     for (const r of config.router.static) {
       out += line(1, `edit ${r.seqNum}`);
-      out += setVal(2, 'dst', r.dst);
+      if (r.dstaddr) {
+        out += setVal(2, 'dstaddr', r.dstaddr);
+      } else {
+        out += setVal(2, 'dst', r.dst);
+      }
       out += setVal(2, 'gateway', r.gateway);
       out += setVal(2, 'device', r.device);
       if (r.distance !== 10) out += setVal(2, 'distance', r.distance);

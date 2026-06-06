@@ -130,6 +130,7 @@ export interface DHCPServer {
   winsServer2: string;
   ntpServer1: string;
   ntpServer2: string;
+  comments: string;
   ipRanges: Array<{ id: number; startIp: string; endIp: string }>;
   reservedAddresses: Array<{ id: number; ip: string; mac: string; description: string; action: 'assign' | 'block' }>;
   options: Array<{ id: number; code: number; type: 'hex' | 'string' | 'ip' | 'fqdn'; value: string }>;
@@ -176,6 +177,7 @@ export interface SystemZone {
 export interface StaticRoute {
   seqNum: number;
   dst: string;
+  dstaddr: string;
   gateway: string;
   device: string;
   distance: number;

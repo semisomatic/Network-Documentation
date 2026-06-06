@@ -363,6 +363,7 @@ function mapDHCPServers(section: RawSection): DHCPServer[] {
       winsServer2: str(p['wins-server2']),
       ntpServer1: str(p['ntp-server1']),
       ntpServer2: str(p['ntp-server2']),
+      comments: str(p['description']) || str(p['comment']),
       ipRanges,
       reservedAddresses: [],
       options: [],
@@ -400,6 +401,7 @@ function mapStaticRoutes(section: RawSection): StaticRoute[] {
     return {
       seqNum: parseInt(e.name) || 0,
       dst: dstArr.join(' '),
+      dstaddr: str(p['dstaddr']),
       gateway: str(p['gateway']),
       device: str(p['device']),
       distance: num(p['distance'], 10),
