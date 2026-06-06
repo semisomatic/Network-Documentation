@@ -178,6 +178,131 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- BGP ---
+  if (config.router.bgp.as) {
+    const bgp = config.router.bgp;
+    out += 'config router bgp\n';
+    out += setVal(1, 'as', bgp.as);
+    out += setVal(1, 'router-id', bgp.routerId);
+    if (bgp.ebgpMultipath) out += setVal(1, 'ebgp-multipath', true);
+    if (bgp.ibgpMultipath) out += setVal(1, 'ibgp-multipath', true);
+    if (bgp.gracefulRestart) out += setVal(1, 'graceful-restart', true);
+    if (!bgp.logNeighborChanges) out += setVal(1, 'log-neighbour-changes', false);
+    if (bgp.neighbors.length > 0) {
+      out += line(1, 'config neighbor');
+      for (const n of bgp.neighbors) {
+        out += line(2, `edit ${q(n.ip)}`);
+        out += setVal(3, 'remote-as', n.remoteAs);
+        out += setVal(3, 'description', n.description);
+        if (n.weight) out += setVal(3, 'weight', n.weight);
+        if (n.ebgpMultihop) out += setVal(3, 'ebgp-multihop', n.ebgpMultihop);
+        if (n.nextHopSelf) out += setVal(3, 'next-hop-self', true);
+        if (n.softReconfiguration) out += setVal(3, 'soft-reconfiguration', true);
+        out += setVal(3, 'route-map-in', n.routeMapIn);
+        out += setVal(3, 'route-map-out', n.routeMapOut);
+        out += setVal(3, 'update-source', n.updateSource);
+        if (n.bfd) out += setVal(3, 'bfd', true);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+    if (bgp.networks.length > 0) {
+      out += line(1, 'config network');
+      for (const n of bgp.networks) {
+        out += line(2, `edit ${n.id}`);
+        out += setVal(3, 'prefix', n.prefix);
+        out += setVal(3, 'route-map', n.routeMap);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+    if (bgp.redistribute.connected) {
+      out += line(1, 'config redistribute connected');
+      out += setVal(2, 'status', 'enable');
+      out += setVal(2, 'route-map', bgp.redistribute.connectedRouteMap);
+      out += line(1, 'end');
+    }
+    if (bgp.redistribute.static) {
+      out += line(1, 'config redistribute static');
+      out += setVal(2, 'status', 'enable');
+      out += setVal(2, 'route-map', bgp.redistribute.staticRouteMap);
+      out += line(1, 'end');
+    }
+    if (bgp.redistribute.ospf) {
+      out += line(1, 'config redistribute ospf');
+      out += setVal(2, 'status', 'enable');
+      out += setVal(2, 'route-map', bgp.redistribute.ospfRouteMap);
+      out += line(1, 'end');
+    }
+    out += 'end\n\n';
+  }
+
+  // --- OSPF ---
+  if (config.router.ospf.routerId || config.router.ospf.networks.length > 0) {
+    const ospf = config.router.ospf;
+    out += 'config router ospf\n';
+    out += setVal(1, 'router-id', ospf.routerId);
+    if (ospf.defaultInformationOriginate) out += setVal(1, 'default-information-originate', true);
+    if (ospf.defaultInformationOriginateAlways) out += setVal(1, 'default-information-originate-always', true);
+    if (ospf.defaultMetric !== 10) out += setVal(1, 'default-metric', ospf.defaultMetric);
+    if (ospf.passiveInterfaces.length > 0) out += setArr(1, 'passive-interface', ospf.passiveInterfaces);
+    if (ospf.areas.length > 0) {
+      out += line(1, 'config area');
+      for (const a of ospf.areas) {
+        out += line(2, `edit ${q(a.id)}`);
+        if (a.type !== 'regular') out += setVal(3, 'type', a.type);
+        if (a.type === 'stub' || a.type === 'nssa') out += setVal(3, 'stub-type', a.stubType);
+        if (a.authentication !== 'none') out += setVal(3, 'authentication', a.authentication);
+        out += setVal(3, 'comments', a.comment);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+    if (ospf.networks.length > 0) {
+      out += line(1, 'config network');
+      for (const n of ospf.networks) {
+        out += line(2, `edit ${n.id}`);
+        out += setVal(3, 'prefix', n.prefix);
+        out += setVal(3, 'area', n.area);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+    if (ospf.ospfInterfaces.length > 0) {
+      out += line(1, 'config ospf-interface');
+      for (const oi of ospf.ospfInterfaces) {
+        out += line(2, `edit ${q(oi.name)}`);
+        if (oi.cost) out += setVal(3, 'cost', oi.cost);
+        if (oi.priority !== 1) out += setVal(3, 'priority', oi.priority);
+        if (oi.helloInterval !== 10) out += setVal(3, 'hello-interval', oi.helloInterval);
+        if (oi.deadInterval !== 40) out += setVal(3, 'dead-interval', oi.deadInterval);
+        if (oi.networkType !== 'broadcast') out += setVal(3, 'network-type', oi.networkType);
+        if (oi.authentication !== 'none') out += setVal(3, 'authentication', oi.authentication);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+    if (ospf.redistribute.connected) {
+      out += line(1, 'config redistribute connected');
+      out += setVal(2, 'status', 'enable');
+      out += setVal(2, 'route-map', ospf.redistribute.connectedRouteMap);
+      out += line(1, 'end');
+    }
+    if (ospf.redistribute.static) {
+      out += line(1, 'config redistribute static');
+      out += setVal(2, 'status', 'enable');
+      out += setVal(2, 'route-map', ospf.redistribute.staticRouteMap);
+      out += line(1, 'end');
+    }
+    if (ospf.redistribute.bgp) {
+      out += line(1, 'config redistribute bgp');
+      out += setVal(2, 'status', 'enable');
+      out += setVal(2, 'route-map', ospf.redistribute.bgpRouteMap);
+      out += line(1, 'end');
+    }
+    out += 'end\n\n';
+  }
+
   // --- Firewall Addresses ---
   if (config.firewallAddress.length > 0) {
     out += 'config firewall address\n';

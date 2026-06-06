@@ -150,6 +150,8 @@ export async function generatePDF(project: FortigateProject) {
   if (c.system.interfaces.length) sections.push('Network Interfaces');
   if (c.router.static.length) sections.push('Static Routes');
   if (c.router.policy.length) sections.push('Policy Routes');
+  if (c.router.bgp.as) sections.push('BGP');
+  if (c.router.ospf.routerId || c.router.ospf.networks.length) sections.push('OSPF');
   if (c.firewallSchedule.length) sections.push('Schedules');
   if (c.firewallVip.length) sections.push('Virtual IPs');
   if (c.firewallIppool.length) sections.push('IP Pools');
@@ -242,6 +244,63 @@ export async function generatePDF(project: FortigateProject) {
       c.router.policy.map(r => [String(r.seqNum), r.src, r.dst, String(r.protocol), r.gateway, r.outputDevice, r.status, r.comments]),
       y,
     );
+  }
+
+  // --- BGP ---
+  if (c.router.bgp.as) {
+    y = addSection(doc, 'BGP', y, tocEntries);
+    y = addKeyValueTable(doc, [
+      ['AS Number', String(c.router.bgp.as)],
+      ['Router ID', c.router.bgp.routerId],
+      ['eBGP Multipath', c.router.bgp.ebgpMultipath ? 'Yes' : 'No'],
+      ['iBGP Multipath', c.router.bgp.ibgpMultipath ? 'Yes' : 'No'],
+      ['Graceful Restart', c.router.bgp.gracefulRestart ? 'Yes' : 'No'],
+    ], y);
+    if (c.router.bgp.neighbors.length) {
+      y = addTable(doc,
+        ['Neighbor', 'Remote AS', 'Update Source', 'Next-Hop Self', 'Route Map In', 'Route Map Out', 'Description'],
+        c.router.bgp.neighbors.map(n => [n.ip, String(n.remoteAs), n.updateSource, n.nextHopSelf ? 'Yes' : 'No', n.routeMapIn, n.routeMapOut, n.description]),
+        y,
+      );
+    }
+    if (c.router.bgp.networks.length) {
+      y = addTable(doc,
+        ['ID', 'Prefix', 'Route Map'],
+        c.router.bgp.networks.map(n => [String(n.id), n.prefix, n.routeMap]),
+        y,
+      );
+    }
+  }
+
+  // --- OSPF ---
+  if (c.router.ospf.routerId || c.router.ospf.networks.length) {
+    y = addSection(doc, 'OSPF', y, tocEntries);
+    y = addKeyValueTable(doc, [
+      ['Router ID', c.router.ospf.routerId],
+      ['Default Metric', String(c.router.ospf.defaultMetric)],
+      ['Default Info Originate', c.router.ospf.defaultInformationOriginate ? 'Yes' : 'No'],
+    ], y);
+    if (c.router.ospf.areas.length) {
+      y = addTable(doc,
+        ['Area ID', 'Type', 'Authentication', 'Comment'],
+        c.router.ospf.areas.map(a => [a.id, a.type, a.authentication, a.comment]),
+        y,
+      );
+    }
+    if (c.router.ospf.networks.length) {
+      y = addTable(doc,
+        ['ID', 'Prefix', 'Area'],
+        c.router.ospf.networks.map(n => [String(n.id), n.prefix, n.area]),
+        y,
+      );
+    }
+    if (c.router.ospf.ospfInterfaces.length) {
+      y = addTable(doc,
+        ['Interface', 'Cost', 'Priority', 'Hello', 'Dead', 'Network Type'],
+        c.router.ospf.ospfInterfaces.map(i => [i.name, String(i.cost), String(i.priority), String(i.helloInterval), String(i.deadInterval), i.networkType]),
+        y,
+      );
+    }
   }
 
   // --- Schedules ---

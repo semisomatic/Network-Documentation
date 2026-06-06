@@ -9,6 +9,8 @@ import DHCPServers from './components/system/DHCPServers';
 import Administrators from './components/system/Administrators';
 import StaticRoutes from './components/network/StaticRoutes';
 import PolicyRoutes from './components/network/PolicyRoutes';
+import BGP from './components/network/BGP';
+import OSPF from './components/network/OSPF';
 import DNS from './components/network/DNS';
 import FirewallPolicy from './components/policy/FirewallPolicy';
 import Addresses from './components/policy/Addresses';
@@ -40,6 +42,8 @@ const sectionMap: Record<string, React.ComponentType> = {
   'system-admins': Administrators,
   'network-static-routes': StaticRoutes,
   'network-policy-routes': PolicyRoutes,
+  'network-bgp': BGP,
+  'network-ospf': OSPF,
   'network-dns': DNS,
   'policy-firewall': FirewallPolicy,
   'policy-addresses': Addresses,

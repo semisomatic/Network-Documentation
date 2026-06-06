@@ -32,6 +32,8 @@ const navStructure: NavItem[] = [
     children: [
       { id: 'network-static-routes', label: 'Static Routes', icon: Route },
       { id: 'network-policy-routes', label: 'Policy Routes', icon: Route },
+      { id: 'network-bgp', label: 'BGP', icon: Globe },
+      { id: 'network-ospf', label: 'OSPF', icon: Globe },
       { id: 'network-dns', label: 'DNS', icon: Globe },
       { id: 'sdwan-config', label: 'SD-WAN', icon: Wifi },
     ],

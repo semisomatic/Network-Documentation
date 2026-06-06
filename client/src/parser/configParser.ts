@@ -7,6 +7,8 @@ import {
   FortigateConfig, createDefaultConfig,
   SystemInterface, SystemGlobal, DHCPServer, Administrator, DNSSettings, SystemZone,
   StaticRoute, PolicyRoute,
+  BGPConfig, BGPNeighbor, BGPNetwork,
+  OSPFConfig, OSPFArea, OSPFNetwork, OSPFInterface,
   FirewallPolicy, FirewallAddress, FirewallAddressGroup,
   FirewallService, FirewallServiceGroup, FirewallSchedule,
   FirewallVIP, FirewallIPPool,
@@ -437,6 +439,146 @@ function mapPolicyRoutes(section: RawSection): PolicyRoute[] {
       tosMask: str(p['tos-mask']),
     };
   });
+}
+
+function mapBGP(section: RawSection, sections: Map<string, RawSection>): BGPConfig {
+  const p = section.properties;
+  const neighbors: BGPNeighbor[] = [];
+  const networks: BGPNetwork[] = [];
+
+  const neighborSection = sections.get('router bgp neighbor');
+  if (neighborSection) {
+    for (const e of neighborSection.entries) {
+      const np = e.properties;
+      neighbors.push({
+        ip: e.name,
+        remoteAs: num(np['remote-as']),
+        description: str(np['description']),
+        weight: num(np['weight']),
+        holdtimeTimer: num(np['holdtime-timer'], 60),
+        keepAliveTimer: num(np['keep-alive-timer'], 30),
+        ebgpMultihop: num(np['ebgp-multihop']),
+        ebgpMultihopTtl: num(np['ebgp-multihop-ttl'], 255),
+        nextHopSelf: bool(np['next-hop-self']),
+        softReconfiguration: bool(np['soft-reconfiguration']),
+        routeMapIn: str(np['route-map-in']),
+        routeMapOut: str(np['route-map-out']),
+        updateSource: str(np['update-source']),
+        bfd: bool(np['bfd']),
+        status: enableDisable(np['shutdown'], 'enable') === 'enable' ? 'disable' : 'enable',
+        comment: str(np['description']),
+      });
+    }
+  }
+
+  const networkSection = sections.get('router bgp network');
+  if (networkSection) {
+    for (const e of networkSection.entries) {
+      const np = e.properties;
+      networks.push({
+        id: parseInt(e.name) || 0,
+        prefix: str(np['prefix']),
+        routeMap: str(np['route-map']),
+      });
+    }
+  }
+
+  // Redistribute from nested properties
+  const redistribute: BGPConfig['redistribute'] = {
+    connected: bool(p['redistribute.connected.status']),
+    connectedRouteMap: str(p['redistribute.connected.route-map']),
+    static: bool(p['redistribute.static.status']),
+    staticRouteMap: str(p['redistribute.static.route-map']),
+    ospf: bool(p['redistribute.ospf.status']),
+    ospfRouteMap: str(p['redistribute.ospf.route-map']),
+  };
+
+  return {
+    as: num(p['as']),
+    routerId: str(p['router-id']),
+    ebgpMultipath: bool(p['ebgp-multipath']),
+    ibgpMultipath: bool(p['ibgp-multipath']),
+    bestpathMedConfed: bool(p['bestpath-med-confed']),
+    bestpathAsPathIgnore: bool(p['bestpath-aspath-ignore']),
+    gracefulRestart: bool(p['graceful-restart']),
+    logNeighborChanges: bool(p['log-neighbour-changes'], true),
+    neighbors,
+    networks,
+    redistribute,
+  };
+}
+
+function mapOSPF(section: RawSection, sections: Map<string, RawSection>): OSPFConfig {
+  const p = section.properties;
+  const areas: OSPFArea[] = [];
+  const networks: OSPFNetwork[] = [];
+  const ospfInterfaces: OSPFInterface[] = [];
+
+  const areaSection = sections.get('router ospf area');
+  if (areaSection) {
+    for (const e of areaSection.entries) {
+      const ap = e.properties;
+      areas.push({
+        id: e.name,
+        type: str(ap['type'], 'regular') as OSPFArea['type'],
+        stubType: str(ap['stub-type'], 'summary') as OSPFArea['stubType'],
+        authentication: str(ap['authentication'], 'none') as OSPFArea['authentication'],
+        comment: str(ap['comments']),
+      });
+    }
+  }
+
+  const networkSection = sections.get('router ospf network');
+  if (networkSection) {
+    for (const e of networkSection.entries) {
+      const np = e.properties;
+      networks.push({
+        id: parseInt(e.name) || 0,
+        prefix: str(np['prefix']),
+        area: str(np['area']),
+      });
+    }
+  }
+
+  const intfSection = sections.get('router ospf ospf-interface');
+  if (intfSection) {
+    for (const e of intfSection.entries) {
+      const ip = e.properties;
+      ospfInterfaces.push({
+        name: e.name,
+        cost: num(ip['cost'], 0),
+        priority: num(ip['priority'], 1),
+        helloInterval: num(ip['hello-interval'], 10),
+        deadInterval: num(ip['dead-interval'], 40),
+        retransmitInterval: num(ip['retransmit-interval'], 5),
+        networkType: str(ip['network-type'], 'broadcast') as OSPFInterface['networkType'],
+        authentication: str(ip['authentication'], 'none') as OSPFInterface['authentication'],
+        status: enableDisable(ip['status'], 'enable'),
+        comment: str(ip['comments']),
+      });
+    }
+  }
+
+  const redistribute: OSPFConfig['redistribute'] = {
+    connected: bool(p['redistribute.connected.status']),
+    connectedRouteMap: str(p['redistribute.connected.route-map']),
+    static: bool(p['redistribute.static.status']),
+    staticRouteMap: str(p['redistribute.static.route-map']),
+    bgp: bool(p['redistribute.bgp.status']),
+    bgpRouteMap: str(p['redistribute.bgp.route-map']),
+  };
+
+  return {
+    routerId: str(p['router-id']),
+    defaultInformationOriginate: bool(p['default-information-originate']),
+    defaultInformationOriginateAlways: bool(p['default-information-originate-always']),
+    defaultMetric: num(p['default-metric'], 10),
+    passiveInterfaces: strArr(p['passive-interface']),
+    areas,
+    networks,
+    ospfInterfaces,
+    redistribute,
+  };
 }
 
 function mapFirewallPolicies(section: RawSection): FirewallPolicy[] {
@@ -941,6 +1083,12 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const routerPolicy = sections.get('router policy');
   if (routerPolicy) config.router.policy = mapPolicyRoutes(routerPolicy);
+
+  const routerBgp = sections.get('router bgp');
+  if (routerBgp) config.router.bgp = mapBGP(routerBgp, sections);
+
+  const routerOspf = sections.get('router ospf');
+  if (routerOspf) config.router.ospf = mapOSPF(routerOspf, sections);
 
   // Firewall
   const fwPolicy = sections.get('firewall policy');

@@ -32,6 +32,8 @@ export interface FortigateConfig {
   router: {
     static: StaticRoute[];
     policy: PolicyRoute[];
+    bgp: BGPConfig;
+    ospf: OSPFConfig;
   };
   firewallPolicy: FirewallPolicy[];
   firewallAddress: FirewallAddress[];
@@ -188,6 +190,104 @@ export interface StaticRoute {
   blackhole: boolean;
   sdwan: boolean;
   sdwanZone: string;
+}
+
+// --- BGP ---
+export interface BGPNeighbor {
+  ip: string;
+  remoteAs: number;
+  description: string;
+  weight: number;
+  holdtimeTimer: number;
+  keepAliveTimer: number;
+  ebgpMultihop: number;
+  ebgpMultihopTtl: number;
+  nextHopSelf: boolean;
+  softReconfiguration: boolean;
+  routeMapIn: string;
+  routeMapOut: string;
+  updateSource: string;
+  bfd: boolean;
+  status: 'enable' | 'disable';
+  comment: string;
+}
+
+export interface BGPNetwork {
+  id: number;
+  prefix: string;
+  routeMap: string;
+}
+
+export interface BGPRedistribute {
+  connected: boolean;
+  connectedRouteMap: string;
+  static: boolean;
+  staticRouteMap: string;
+  ospf: boolean;
+  ospfRouteMap: string;
+}
+
+export interface BGPConfig {
+  as: number;
+  routerId: string;
+  ebgpMultipath: boolean;
+  ibgpMultipath: boolean;
+  bestpathMedConfed: boolean;
+  bestpathAsPathIgnore: boolean;
+  gracefulRestart: boolean;
+  logNeighborChanges: boolean;
+  neighbors: BGPNeighbor[];
+  networks: BGPNetwork[];
+  redistribute: BGPRedistribute;
+}
+
+// --- OSPF ---
+export interface OSPFArea {
+  id: string;
+  type: 'regular' | 'stub' | 'nssa';
+  stubType: 'no-summary' | 'summary';
+  authentication: 'none' | 'text' | 'md5';
+  comment: string;
+}
+
+export interface OSPFNetwork {
+  id: number;
+  prefix: string;
+  area: string;
+}
+
+export interface OSPFInterface {
+  name: string;
+  cost: number;
+  priority: number;
+  helloInterval: number;
+  deadInterval: number;
+  retransmitInterval: number;
+  networkType: 'broadcast' | 'non-broadcast' | 'point-to-point' | 'point-to-multipoint';
+  authentication: 'none' | 'text' | 'md5';
+  status: 'enable' | 'disable';
+  comment: string;
+}
+
+export interface OSPFRedistribute {
+  connected: boolean;
+  connectedRouteMap: string;
+  static: boolean;
+  staticRouteMap: string;
+  bgp: boolean;
+  bgpRouteMap: string;
+}
+
+export interface OSPFConfig {
+  routerId: string;
+  defaultInformationOriginate: boolean;
+  defaultInformationOriginateAlways: boolean;
+  defaultMetric: number;
+  passiveInterfaces: string[];
+  areas: OSPFArea[];
+  networks: OSPFNetwork[];
+  ospfInterfaces: OSPFInterface[];
+  redistribute: OSPFRedistribute;
 }
 
 // --- Policy Route ---
@@ -792,6 +892,18 @@ export function createDefaultConfig(): FortigateConfig {
     router: {
       static: [],
       policy: [],
+      bgp: {
+        as: 0, routerId: '', ebgpMultipath: false, ibgpMultipath: false,
+        bestpathMedConfed: false, bestpathAsPathIgnore: false,
+        gracefulRestart: false, logNeighborChanges: true,
+        neighbors: [], networks: [],
+        redistribute: { connected: false, connectedRouteMap: '', static: false, staticRouteMap: '', ospf: false, ospfRouteMap: '' },
+      },
+      ospf: {
+        routerId: '', defaultInformationOriginate: false, defaultInformationOriginateAlways: false,
+        defaultMetric: 10, passiveInterfaces: [], areas: [], networks: [], ospfInterfaces: [],
+        redistribute: { connected: false, connectedRouteMap: '', static: false, staticRouteMap: '', bgp: false, bgpRouteMap: '' },
+      },
     },
     firewallPolicy: [],
     firewallAddress: [],
@@ -877,5 +989,13 @@ export function migrateProject(raw: any): FortigateProject {
   if (!project.version) project.version = 1;
   if (!project.highlights) project.highlights = {};
   if (!project._deletedNames) project._deletedNames = {};
+  if (project.config) {
+    if (!project.config.router.bgp) {
+      project.config.router.bgp = createDefaultConfig().router.bgp;
+    }
+    if (!project.config.router.ospf) {
+      project.config.router.ospf = createDefaultConfig().router.ospf;
+    }
+  }
   return project as FortigateProject;
 }
