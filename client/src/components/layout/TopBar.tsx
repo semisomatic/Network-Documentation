@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { Upload, Download, FileText, Save, FolderOpen, Plus, Check } from 'lucide-react';
+import React, { useRef, useState, useEffect } from 'react';
+import { Upload, Download, FileText, Save, FolderOpen, Plus, Check, ChevronDown } from 'lucide-react';
 import { useProjectStore } from '../../store/projectStore';
 import { parseFortiConfig } from '../../parser/configParser';
 import { exportFortiConfig } from '../../parser/configExporter';
@@ -10,6 +10,18 @@ export default function TopBar() {
   const configInputRef = useRef<HTMLInputElement>(null);
   const projectInputRef = useRef<HTMLInputElement>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleImportConfig = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -96,7 +108,6 @@ export default function TopBar() {
         </div>
         <div className="text-xs text-gray-400 flex items-center space-x-3">
           <span>{project.hostname}</span>
-          <span>{project.model}</span>
           <span>v{project.fortiosVersion}</span>
           {isDirty && <span className="text-yellow-400">* Unsaved</span>}
         </div>
@@ -104,37 +115,54 @@ export default function TopBar() {
 
       {/* Right: Actions */}
       <div className="flex items-center space-x-2">
-        <button onClick={resetProject} className="flex items-center space-x-1 px-3 py-1.5 text-xs bg-gray-700 rounded hover:bg-gray-600 transition-colors">
-          <Plus size={14} />
-          <span>New</span>
-        </button>
-
-        <label className="flex items-center space-x-1 px-3 py-1.5 text-xs bg-gray-700 rounded hover:bg-gray-600 transition-colors cursor-pointer">
-          <Upload size={14} />
-          <span>Import Config</span>
-          <input ref={configInputRef} type="file" accept=".conf,.txt,.cfg" onChange={handleImportConfig} className="hidden" />
-        </label>
-
-        <button onClick={handleExportConfig} className="flex items-center space-x-1 px-3 py-1.5 text-xs bg-gray-700 rounded hover:bg-gray-600 transition-colors">
-          <Download size={14} />
-          <span>Export Config</span>
+        <button onClick={handleSaveProject} className={`flex items-center space-x-1 px-3 py-1.5 text-xs rounded transition-colors ${saveStatus === 'saved' ? 'bg-green-500' : 'bg-green-600 hover:bg-green-700'}`}>
+          {saveStatus === 'saved' ? <Check size={14} /> : <Save size={14} />}
+          <span>{saveStatus === 'saved' ? 'Saved!' : 'Save'}</span>
         </button>
 
         <button onClick={handleExportPDF} className="flex items-center space-x-1 px-3 py-1.5 text-xs bg-forti-accent rounded hover:bg-forti-accent-hover transition-colors">
           <FileText size={14} />
-          <span>Export PDF</span>
+          <span>PDF</span>
         </button>
 
-        <button onClick={handleSaveProject} className={`flex items-center space-x-1 px-3 py-1.5 text-xs rounded transition-colors ${saveStatus === 'saved' ? 'bg-green-500' : 'bg-green-600 hover:bg-green-700'}`}>
-          {saveStatus === 'saved' ? <Check size={14} /> : <Save size={14} />}
-          <span>{saveStatus === 'saved' ? 'Saved!' : 'Save Project'}</span>
-        </button>
-
-        <label className="flex items-center space-x-1 px-3 py-1.5 text-xs bg-gray-700 rounded hover:bg-gray-600 transition-colors cursor-pointer">
-          <FolderOpen size={14} />
-          <span>Open Project</span>
-          <input ref={projectInputRef} type="file" accept=".fortidoc,.json" onChange={handleLoadProject} className="hidden" />
-        </label>
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="flex items-center space-x-1 px-3 py-1.5 text-xs bg-gray-700 rounded hover:bg-gray-600 transition-colors"
+          >
+            <span>File</span>
+            <ChevronDown size={14} />
+          </button>
+          {menuOpen && (
+            <div className="absolute right-0 top-full mt-1 w-48 bg-gray-800 rounded shadow-lg border border-gray-600 z-50 py-1">
+              <button
+                onClick={() => { resetProject(); setMenuOpen(false); }}
+                className="w-full flex items-center space-x-2 px-4 py-2 text-xs text-gray-200 hover:bg-gray-700"
+              >
+                <Plus size={14} />
+                <span>New Project</span>
+              </button>
+              <label className="w-full flex items-center space-x-2 px-4 py-2 text-xs text-gray-200 hover:bg-gray-700 cursor-pointer">
+                <FolderOpen size={14} />
+                <span>Open Project</span>
+                <input ref={projectInputRef} type="file" accept=".fortidoc,.json" onChange={(e) => { handleLoadProject(e); setMenuOpen(false); }} className="hidden" />
+              </label>
+              <div className="border-t border-gray-600 my-1" />
+              <label className="w-full flex items-center space-x-2 px-4 py-2 text-xs text-gray-200 hover:bg-gray-700 cursor-pointer">
+                <Upload size={14} />
+                <span>Import Config</span>
+                <input ref={configInputRef} type="file" accept=".conf,.txt,.cfg" onChange={(e) => { handleImportConfig(e); setMenuOpen(false); }} className="hidden" />
+              </label>
+              <button
+                onClick={() => { handleExportConfig(); setMenuOpen(false); }}
+                className="w-full flex items-center space-x-2 px-4 py-2 text-xs text-gray-200 hover:bg-gray-700"
+              >
+                <Download size={14} />
+                <span>Export Config</span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

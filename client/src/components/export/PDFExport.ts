@@ -212,10 +212,14 @@ export async function generatePDF(project: FortigateProject) {
 
   // --- Interfaces ---
   if (c.system.interfaces.length) {
+    const zoneMap = new Map<string, string>();
+    for (const z of c.system.zones) {
+      for (const intf of z.interface) zoneMap.set(intf, z.name);
+    }
     y = addSection(doc, 'Network Interfaces', y, tocEntries);
     y = addTable(doc,
-      ['Name', 'Type', 'IP Address', 'Netmask', 'Role', 'Status', 'Admin Access'],
-      c.system.interfaces.map(i => [i.name, i.type, i.ip, i.netmask, i.role, i.status, i.allowaccess.join(', ')]),
+      ['Name', 'Type', 'IP Address', 'Netmask', 'Role', 'Zone', 'Admin Access'],
+      c.system.interfaces.map(i => [i.name, i.type, i.ip, i.netmask, i.role, zoneMap.get(i.name) || '', i.allowaccess.join(', ')]),
       y,
     );
   }
@@ -225,7 +229,7 @@ export async function generatePDF(project: FortigateProject) {
     y = addSection(doc, 'Static Routes', y, tocEntries);
     y = addTable(doc,
       ['Seq', 'Destination', 'Gateway', 'Interface', 'Distance', 'Status', 'Comment'],
-      c.router.static.map(r => [String(r.seqNum), r.dst, r.gateway, r.device, String(r.distance), r.status, r.comment]),
+      c.router.static.map(r => [String(r.seqNum), r.dstaddr || r.dst, r.gateway, r.device, String(r.distance), r.status, r.comment]),
       y,
     );
   }
@@ -342,8 +346,8 @@ export async function generatePDF(project: FortigateProject) {
   if (c.system.dhcpServers.length) {
     y = addSection(doc, 'DHCP Servers', y, tocEntries);
     y = addTable(doc,
-      ['ID', 'Interface', 'Gateway', 'Netmask', 'DNS 1', 'DNS 2', 'Status'],
-      c.system.dhcpServers.map(d => [String(d.id), d.interface, d.defaultGateway, d.netmask, d.dnsServer1, d.dnsServer2, d.status]),
+      ['ID', 'Interface', 'Gateway', 'Netmask', 'DNS 1', 'DNS 2', 'Status', 'Comments'],
+      c.system.dhcpServers.map(d => [String(d.id), d.interface, d.defaultGateway, d.netmask, d.dnsServer1, d.dnsServer2, d.status, d.comments]),
       y,
     );
   }
