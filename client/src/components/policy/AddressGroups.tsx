@@ -13,7 +13,8 @@ const defaultGroup: FirewallAddressGroup = {
 
 export default function AddressGroups() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlights = useProjectStore((s) => s.project.highlights[PATH] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.firewallAddrgrp;
   const addresses = config.firewallAddress;
 
@@ -49,6 +50,8 @@ export default function AddressGroups() {
     <>
       <DataTable title="Address Groups" columns={columns} data={data}
         getRowKey={(item) => item.name}
+        highlights={highlights}
+        onHighlight={(key, color) => setHighlight(PATH, key, color)}
         onAdd={() => { setEditing({ item: { ...defaultGroup }, index: -1 }); setIsNew(true); }}
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
