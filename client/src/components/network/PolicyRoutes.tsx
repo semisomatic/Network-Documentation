@@ -36,7 +36,8 @@ const fields: FieldDef[] = [
 
 export default function PolicyRoutes() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlights = useProjectStore((s) => s.project.highlights[PATH] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.router.policy;
 
   const [editing, setEditing] = useState<{ item: PolicyRoute; index: number } | null>(null);
@@ -64,6 +65,8 @@ export default function PolicyRoutes() {
     <>
       <DataTable title="Policy Routes" columns={columns} data={data}
         getRowKey={(item) => String(item.seqNum)}
+        highlights={highlights}
+        onHighlight={(key, color) => setHighlight(PATH, key, color)}
         onAdd={() => { setEditing({ item: { ...defaultRoute }, index: -1 }); setIsNew(true); }}
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}

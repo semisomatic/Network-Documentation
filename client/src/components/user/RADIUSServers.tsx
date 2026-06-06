@@ -38,7 +38,8 @@ const fields: FieldDef[] = [
 
 export default function RADIUSServers() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlights = useProjectStore((s) => s.project.highlights[PATH] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.user.radius;
 
   const [editing, setEditing] = useState<{ item: RADIUSServer; index: number } | null>(null);
@@ -63,6 +64,8 @@ export default function RADIUSServers() {
     <>
       <DataTable title="RADIUS Servers" columns={columns} data={data}
         getRowKey={(item) => item.name}
+        highlights={highlights}
+        onHighlight={(key, color) => setHighlight(PATH, key, color)}
         onAdd={() => { setEditing({ item: { ...defaultServer }, index: -1 }); setIsNew(true); }}
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}

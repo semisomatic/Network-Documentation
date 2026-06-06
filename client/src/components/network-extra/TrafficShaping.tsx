@@ -57,7 +57,9 @@ const policyFields: FieldDef[] = [
 
 export default function TrafficShaping() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlightsShapers = useProjectStore((s) => s.project.highlights[PATH_SHAPERS] || {});
+  const highlightsPolicies = useProjectStore((s) => s.project.highlights[PATH_POLICIES] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const shapersData = config.trafficShaping.shapers;
   const policiesData = config.trafficShaping.shapingPolicies;
 
@@ -103,6 +105,8 @@ export default function TrafficShaping() {
     <>
       <DataTable title="Traffic Shapers" columns={shaperColumns} data={shapersData}
         getRowKey={(item) => item.name}
+        highlights={highlightsShapers}
+        onHighlight={(key, color) => setHighlight(PATH_SHAPERS, key, color)}
         onAdd={() => { setEditingShaper({ item: { ...defaultShaper }, index: -1 }); setIsNewShaper(true); }}
         onEdit={(item, index) => { setEditingShaper({ item: { ...item }, index }); setIsNewShaper(false); }}
         onDelete={(_, index) => setDeletingShaper(index)}
@@ -122,6 +126,8 @@ export default function TrafficShaping() {
       <div className="mt-6">
         <DataTable title="Traffic Shaping Policies" columns={policyColumns} data={policiesData}
           getRowKey={(item) => String(item.id)}
+          highlights={highlightsPolicies}
+          onHighlight={(key, color) => setHighlight(PATH_POLICIES, key, color)}
           onAdd={() => { setEditingPolicy({ item: { ...defaultPolicy }, index: -1 }); setIsNewPolicy(true); }}
           onEdit={(item, index) => { setEditingPolicy({ item: { ...item }, index }); setIsNewPolicy(false); }}
           onDelete={(_, index) => setDeletingPolicy(index)}

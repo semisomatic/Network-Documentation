@@ -59,7 +59,9 @@ const ruleFields: FieldDef[] = [
 
 export default function SDWAN() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlightsMembers = useProjectStore((s) => s.project.highlights[PATH_MEMBERS] || {});
+  const highlightsRules = useProjectStore((s) => s.project.highlights[PATH_RULES] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const membersData = config.sdwan.members;
   const rulesData = config.sdwan.rules;
 
@@ -107,6 +109,8 @@ export default function SDWAN() {
     <>
       <DataTable title="SD-WAN Members" columns={memberColumns} data={membersData}
         getRowKey={(item) => String(item.seqNum)}
+        highlights={highlightsMembers}
+        onHighlight={(key, color) => setHighlight(PATH_MEMBERS, key, color)}
         onAdd={() => { setEditingMember({ item: { ...defaultMember }, index: -1 }); setIsNewMember(true); }}
         onEdit={(item, index) => { setEditingMember({ item: { ...item }, index }); setIsNewMember(false); }}
         onDelete={(_, index) => setDeletingMember(index)}
@@ -126,6 +130,8 @@ export default function SDWAN() {
       <div className="mt-6">
         <DataTable title="SD-WAN Rules" columns={ruleColumns} data={rulesData}
           getRowKey={(item) => String(item.id)}
+          highlights={highlightsRules}
+          onHighlight={(key, color) => setHighlight(PATH_RULES, key, color)}
           onAdd={() => { setEditingRule({ item: { ...defaultRule }, index: -1 }); setIsNewRule(true); }}
           onEdit={(item, index) => { setEditingRule({ item: { ...item }, index }); setIsNewRule(false); }}
           onDelete={(_, index) => setDeletingRule(index)}

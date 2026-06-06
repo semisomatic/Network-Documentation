@@ -39,7 +39,8 @@ const fields: FieldDef[] = [
 
 export default function VirtualIPs() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlights = useProjectStore((s) => s.project.highlights[PATH] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.firewallVip;
 
   const [editing, setEditing] = useState<{ item: FirewallVIP; index: number } | null>(null);
@@ -67,6 +68,8 @@ export default function VirtualIPs() {
     <>
       <DataTable title="Virtual IPs (DNAT)" columns={columns} data={data}
         getRowKey={(item) => item.name}
+        highlights={highlights}
+        onHighlight={(key, color) => setHighlight(PATH, key, color)}
         onAdd={() => { setEditing({ item: { ...defaultVIP }, index: -1 }); setIsNew(true); }}
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}

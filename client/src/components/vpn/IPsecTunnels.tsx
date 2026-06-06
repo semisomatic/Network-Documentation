@@ -84,7 +84,9 @@ const phase2Fields: FieldDef[] = [
 
 export default function IPsecTunnels() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlightsP1 = useProjectStore((s) => s.project.highlights[PATH_P1] || {});
+  const highlightsP2 = useProjectStore((s) => s.project.highlights[PATH_P2] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const phase1Data = config.vpnIpsec.phase1;
   const phase2Data = config.vpnIpsec.phase2;
 
@@ -130,6 +132,8 @@ export default function IPsecTunnels() {
     <>
       <DataTable title="IPsec Phase 1" columns={phase1Columns} data={phase1Data}
         getRowKey={(item) => item.name}
+        highlights={highlightsP1}
+        onHighlight={(key, color) => setHighlight(PATH_P1, key, color)}
         onAdd={() => { setEditingP1({ item: { ...defaultPhase1 }, index: -1 }); setIsNewP1(true); }}
         onEdit={(item, index) => { setEditingP1({ item: { ...item }, index }); setIsNewP1(false); }}
         onDelete={(_, index) => setDeletingP1(index)}
@@ -149,6 +153,8 @@ export default function IPsecTunnels() {
       <div className="mt-6">
         <DataTable title="IPsec Phase 2" columns={phase2Columns} data={phase2Data}
           getRowKey={(item) => item.name}
+          highlights={highlightsP2}
+          onHighlight={(key, color) => setHighlight(PATH_P2, key, color)}
           onAdd={() => { setEditingP2({ item: { ...defaultPhase2 }, index: -1 }); setIsNewP2(true); }}
           onEdit={(item, index) => { setEditingP2({ item: { ...item }, index }); setIsNewP2(false); }}
           onDelete={(_, index) => setDeletingP2(index)}

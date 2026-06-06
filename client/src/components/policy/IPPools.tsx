@@ -35,7 +35,8 @@ const fields: FieldDef[] = [
 
 export default function IPPools() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlights = useProjectStore((s) => s.project.highlights[PATH] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.firewallIppool;
 
   const [editing, setEditing] = useState<{ item: FirewallIPPool; index: number } | null>(null);
@@ -62,6 +63,8 @@ export default function IPPools() {
     <>
       <DataTable title="IP Pools (SNAT)" columns={columns} data={data}
         getRowKey={(item) => item.name}
+        highlights={highlights}
+        onHighlight={(key, color) => setHighlight(PATH, key, color)}
         onAdd={() => { setEditing({ item: { ...defaultPool }, index: -1 }); setIsNew(true); }}
         onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
         onDelete={(_, index) => setDeleting(index)}
