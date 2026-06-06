@@ -1,5 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import SearchableMultiSelect from './SearchableMultiSelect';
 
 export interface FieldDef {
   key: string;
@@ -85,21 +86,12 @@ export default function EditModal({
 
       case 'multiselect':
         return (
-          <select
-            multiple
+          <SearchableMultiSelect
+            options={field.options || []}
             value={Array.isArray(val) ? val : []}
-            onChange={(e) => {
-              const selected = Array.from(e.target.selectedOptions, (opt) => opt.value);
-              onChange(field.key, selected);
-            }}
-            className="forti-select min-h-[80px]"
-          >
-            {field.options?.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
+            onChange={(selected) => onChange(field.key, selected)}
+            placeholder={field.placeholder || `Select ${field.label}...`}
+          />
         );
 
       case 'checkbox':

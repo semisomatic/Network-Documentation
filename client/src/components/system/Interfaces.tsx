@@ -125,7 +125,9 @@ const zoneFields: FieldDef[] = [
 
 export default function Interfaces() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const intfHighlights = useProjectStore((s) => s.project.highlights[PATH] || {});
+  const zoneHighlights = useProjectStore((s) => s.project.highlights[ZONE_PATH] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.system.interfaces;
   const zones = config.system.zones || [];
 
@@ -205,6 +207,8 @@ export default function Interfaces() {
           onDelete={(_, index) => setDeletingZone(index)}
           onReorder={(from, to) => reorderItems(ZONE_PATH, from, to)}
           emptyMessage="No zones configured."
+          highlights={zoneHighlights}
+          onHighlight={(key, color) => setHighlight(ZONE_PATH, key, color)}
         />
       </div>
 
@@ -230,6 +234,8 @@ export default function Interfaces() {
           setEditing({ item: { ...(cleanItem as SystemInterface), name: cleanItem.name + '_copy' }, index: -1 });
           setIsNew(true);
         }}
+        highlights={intfHighlights}
+        onHighlight={(key, color) => setHighlight(PATH, key, color)}
       />
 
       {/* Interface Edit Modal */}

@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react';
-import { Plus, Edit2, Trash2, Copy, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import { Plus, Edit2, Trash2, Copy, Search, ChevronUp, ChevronDown, AlertTriangle } from 'lucide-react';
+import type { HighlightColor } from '../../types/fortigate';
 
 export interface Column<T> {
   key: string;
@@ -21,7 +22,33 @@ interface DataTableProps<T> {
   getRowKey?: (item: T, index: number) => string;
   searchFields?: string[];
   emptyMessage?: string;
+  // Highlight support
+  highlights?: Record<string, HighlightColor>;
+  onHighlight?: (key: string, color: HighlightColor | null) => void;
+  // Warning support (orphan refs, etc.)
+  getWarnings?: (item: T) => string[];
 }
+
+const HIGHLIGHT_COLORS: { color: HighlightColor; label: string; dot: string; bg: string }[] = [
+  { color: 'red', label: 'Red', dot: 'bg-red-400', bg: 'bg-red-100' },
+  { color: 'yellow', label: 'Yellow', dot: 'bg-yellow-400', bg: 'bg-yellow-100' },
+  { color: 'green', label: 'Green', dot: 'bg-green-400', bg: 'bg-green-100' },
+  { color: 'blue', label: 'Blue', dot: 'bg-blue-400', bg: 'bg-blue-100' },
+];
+
+const HIGHLIGHT_BG: Record<HighlightColor, string> = {
+  red: 'bg-red-50',
+  yellow: 'bg-yellow-50',
+  green: 'bg-green-50',
+  blue: 'bg-blue-50',
+};
+
+const HIGHLIGHT_NAME_BG: Record<HighlightColor, string> = {
+  red: 'bg-red-200 text-red-900',
+  yellow: 'bg-yellow-200 text-yellow-900',
+  green: 'bg-green-200 text-green-900',
+  blue: 'bg-blue-200 text-blue-900',
+};
 
 export default function DataTable<T extends Record<string, any>>({
   title,
@@ -35,6 +62,9 @@ export default function DataTable<T extends Record<string, any>>({
   getRowKey,
   searchFields,
   emptyMessage = 'No entries configured.',
+  highlights,
+  onHighlight,
+  getWarnings,
 }: DataTableProps<T>) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortKey, setSortKey] = useState<string | null>(null);
@@ -45,7 +75,23 @@ export default function DataTable<T extends Record<string, any>>({
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const dragCounter = useRef(0);
 
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    key: string;
+  } | null>(null);
+
   const canDrag = !!onReorder && !searchQuery.trim() && !sortKey;
+  const canHighlight = !!highlights && !!onHighlight && !!getRowKey;
+
+  // Close context menu on any click
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener('click', close);
+    return () => window.removeEventListener('click', close);
+  }, [contextMenu]);
 
   const filteredData = useMemo(() => {
     if (!searchQuery.trim()) return data;
@@ -56,7 +102,7 @@ export default function DataTable<T extends Record<string, any>>({
         const val = item[field];
         if (val == null) return false;
         return String(val).toLowerCase().includes(q);
-      })
+      }),
     );
   }, [data, searchQuery, searchFields, columns]);
 
@@ -79,7 +125,6 @@ export default function DataTable<T extends Record<string, any>>({
     }
   };
 
-  // Drag handlers — attached to the whole <tr>
   const handleDragStart = useCallback((e: React.DragEvent, index: number) => {
     setDragIndex(index);
     e.dataTransfer.effectAllowed = 'move';
@@ -116,19 +161,33 @@ export default function DataTable<T extends Record<string, any>>({
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const handleDrop = useCallback((e: React.DragEvent, toIndex: number) => {
-    e.preventDefault();
-    const fromIndex = dragIndex;
-    setDragIndex(null);
-    setDragOverIndex(null);
-    dragCounter.current = 0;
-    if (fromIndex !== null && fromIndex !== toIndex && onReorder) {
-      onReorder(fromIndex, toIndex);
-    }
-  }, [dragIndex, onReorder]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent, toIndex: number) => {
+      e.preventDefault();
+      const fromIndex = dragIndex;
+      setDragIndex(null);
+      setDragOverIndex(null);
+      dragCounter.current = 0;
+      if (fromIndex !== null && fromIndex !== toIndex && onReorder) {
+        onReorder(fromIndex, toIndex);
+      }
+    },
+    [dragIndex, onReorder],
+  );
+
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, item: T, index: number) => {
+      if (!canHighlight) return;
+      e.preventDefault();
+      const key = getRowKey!(item, index);
+      setContextMenu({ x: e.clientX, y: e.clientY, key });
+    },
+    [canHighlight, getRowKey],
+  );
 
   const hasActions = onEdit || onDelete || onClone;
-  const totalCols = columns.length + (hasActions ? 1 : 0);
+  const hasWarnings = !!getWarnings;
+  const totalCols = columns.length + (hasActions ? 1 : 0) + (hasWarnings ? 1 : 0);
 
   return (
     <div className="forti-card">
@@ -148,14 +207,20 @@ export default function DataTable<T extends Record<string, any>>({
           </div>
           {sortKey && (
             <button
-              onClick={() => { setSortKey(null); setSortDir('asc'); }}
+              onClick={() => {
+                setSortKey(null);
+                setSortDir('asc');
+              }}
               className="text-xs text-forti-accent hover:text-forti-accent-hover"
             >
               Clear sort
             </button>
           )}
           {onAdd && (
-            <button onClick={onAdd} className="forti-btn-primary flex items-center space-x-1 text-xs">
+            <button
+              onClick={onAdd}
+              className="forti-btn-primary flex items-center space-x-1 text-xs"
+            >
               <Plus size={14} />
               <span>Create New</span>
             </button>
@@ -175,6 +240,7 @@ export default function DataTable<T extends Record<string, any>>({
         <table className="forti-table">
           <thead>
             <tr>
+              {hasWarnings && <th style={{ width: '30px' }} />}
               {columns.map((col) => (
                 <th
                   key={col.key}
@@ -184,15 +250,12 @@ export default function DataTable<T extends Record<string, any>>({
                 >
                   <div className="flex items-center space-x-1">
                     <span>{col.label}</span>
-                    {sortKey === col.key && (
-                      sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />
-                    )}
+                    {sortKey === col.key &&
+                      (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
                   </div>
                 </th>
               ))}
-              {hasActions && (
-                <th style={{ width: '120px' }}>Actions</th>
-              )}
+              {hasActions && <th style={{ width: '120px' }}>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -206,10 +269,13 @@ export default function DataTable<T extends Record<string, any>>({
               sortedData.map((item, index) => {
                 const isDragTarget = dragOverIndex === index && dragIndex !== index;
                 const isBeingDragged = dragIndex === index;
+                const rowKey = getRowKey ? getRowKey(item, index) : String(index);
+                const rowHighlight = highlights?.[rowKey];
+                const warnings = getWarnings ? getWarnings(item) : [];
 
                 return (
                   <tr
-                    key={getRowKey ? getRowKey(item, index) : index}
+                    key={rowKey}
                     draggable={canDrag}
                     onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
                     onDragEnd={canDrag ? handleDragEnd : undefined}
@@ -217,17 +283,49 @@ export default function DataTable<T extends Record<string, any>>({
                     onDragLeave={canDrag ? handleDragLeave : undefined}
                     onDragOver={canDrag ? handleDragOver : undefined}
                     onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
+                    onContextMenu={(e) => handleContextMenu(e, item, index)}
                     className={`
                       ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}
                       ${isDragTarget ? 'border-t-2 !border-t-forti-accent bg-blue-50' : ''}
                       ${isBeingDragged ? 'opacity-40' : ''}
                     `}
                   >
-                    {columns.map((col) => (
-                      <td key={col.key}>
-                        {col.render ? col.render(item, index) : String(item[col.key] ?? '')}
+                    {hasWarnings && (
+                      <td className="!px-1 !py-0 text-center" style={{ width: '30px' }}>
+                        {warnings.length > 0 && (
+                          <span className="group relative">
+                            <AlertTriangle size={14} className="text-amber-500 inline-block" />
+                            <span className="hidden group-hover:block absolute left-6 top-0 z-50 bg-gray-900 text-white text-xs rounded px-3 py-2 whitespace-nowrap shadow-lg max-w-xs">
+                              {warnings.map((w, i) => (
+                                <span key={i} className="block">
+                                  {w}
+                                </span>
+                              ))}
+                            </span>
+                          </span>
+                        )}
                       </td>
-                    ))}
+                    )}
+                    {columns.map((col, colIdx) => {
+                      const isFirstCol = colIdx === 0;
+                      const highlightClass =
+                        isFirstCol && rowHighlight ? HIGHLIGHT_NAME_BG[rowHighlight] : '';
+                      return (
+                        <td key={col.key}>
+                          {isFirstCol && rowHighlight ? (
+                            <span className={`inline-block px-1.5 py-0.5 rounded text-sm ${highlightClass}`}>
+                              {col.render
+                                ? col.render(item, index)
+                                : String(item[col.key] ?? '')}
+                            </span>
+                          ) : (
+                            col.render
+                              ? col.render(item, index)
+                              : String(item[col.key] ?? '')
+                          )}
+                        </td>
+                      );
+                    })}
                     {hasActions && (
                       <td>
                         <div className="flex items-center space-x-1">
@@ -273,6 +371,48 @@ export default function DataTable<T extends Record<string, any>>({
       <div className="px-4 py-2 border-t border-forti-table-border text-xs text-forti-text-secondary">
         {sortedData.length} of {data.length} entries
       </div>
+
+      {/* Right-click highlight context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg py-1 min-w-[160px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1.5 text-xs text-gray-500 font-semibold">Highlight</div>
+          {HIGHLIGHT_COLORS.map(({ color, label, dot }) => {
+            const isActive = highlights?.[contextMenu.key] === color;
+            return (
+              <button
+                key={color}
+                onClick={() => {
+                  onHighlight!(contextMenu.key, isActive ? null : color);
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 flex items-center"
+              >
+                <span className={`w-3 h-3 rounded-full mr-2 ${dot}`} />
+                <span className="flex-1">{label}</span>
+                {isActive && <span className="text-forti-accent text-xs ml-2">Active</span>}
+              </button>
+            );
+          })}
+          {highlights?.[contextMenu.key] && (
+            <>
+              <div className="border-t border-gray-100 my-1" />
+              <button
+                onClick={() => {
+                  onHighlight!(contextMenu.key, null);
+                  setContextMenu(null);
+                }}
+                className="w-full px-3 py-1.5 text-sm text-left hover:bg-gray-100 text-gray-500"
+              >
+                Remove Highlight
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

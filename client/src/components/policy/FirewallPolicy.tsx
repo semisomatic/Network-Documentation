@@ -24,18 +24,29 @@ const defaultPolicy: FWPolicy = {
 
 export default function FirewallPolicy() {
   const config = useProjectStore((s) => s.project.config);
-  const { addItem, updateItem, removeItem, reorderItems } = useProjectStore();
+  const highlights = useProjectStore((s) => s.project.highlights[PATH] || {});
+  const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.firewallPolicy;
 
   const [editing, setEditing] = useState<{ item: FWPolicy; index: number } | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  const intfOptions = config.system.interfaces.map(i => ({ value: i.name, label: i.name }));
+  const intfOptions = [
+    ...config.system.interfaces.map(i => ({ value: i.name, label: i.name })),
+    ...config.system.zones.map(z => ({ value: z.name, label: `[Zone] ${z.name}` })),
+    ...(config.sdwan?.zones || []).map(z => ({ value: z.name, label: `[SD-WAN] ${z.name}` })),
+  ];
   const addrOptions = [
     { value: 'all', label: 'all' },
     ...config.firewallAddress.map(a => ({ value: a.name, label: a.name })),
     ...config.firewallAddrgrp.map(g => ({ value: g.name, label: `[G] ${g.name}` })),
+  ];
+  const dstAddrOptions = [
+    { value: 'all', label: 'all' },
+    ...config.firewallAddress.map(a => ({ value: a.name, label: a.name })),
+    ...config.firewallAddrgrp.map(g => ({ value: g.name, label: `[G] ${g.name}` })),
+    ...config.firewallVip.map(v => ({ value: v.name, label: `[VIP] ${v.name}` })),
   ];
   const svcOptions = [
     { value: 'ALL', label: 'ALL' },
@@ -61,7 +72,7 @@ export default function FirewallPolicy() {
     { key: 'srcaddr', label: 'Source Address', type: 'multiselect', group: 'Source', options: addrOptions },
     { key: 'srcaddrNegate', label: 'Negate Source', type: 'checkbox', group: 'Source' },
     { key: 'dstintf', label: 'Destination Interface', type: 'multiselect', group: 'Destination', options: intfOptions },
-    { key: 'dstaddr', label: 'Destination Address', type: 'multiselect', group: 'Destination', options: addrOptions },
+    { key: 'dstaddr', label: 'Destination Address', type: 'multiselect', group: 'Destination', options: dstAddrOptions },
     { key: 'dstaddrNegate', label: 'Negate Destination', type: 'checkbox', group: 'Destination' },
     { key: 'service', label: 'Service', type: 'multiselect', group: 'Service', options: svcOptions },
     { key: 'schedule', label: 'Schedule', type: 'select', group: 'Service', options: schedOptions },
@@ -136,6 +147,8 @@ export default function FirewallPolicy() {
           setIsNew(true);
         }}
         onReorder={(from, to) => reorderItems(PATH, from, to)}
+        highlights={highlights}
+        onHighlight={(key, color) => setHighlight(PATH, key, color)}
       />
       {editing && (
         <EditModal title="Firewall Policy" fields={fields} values={editing.item} isNew={isNew}
