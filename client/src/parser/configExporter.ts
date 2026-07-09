@@ -88,8 +88,23 @@ export function exportFortiConfig(config: FortigateConfig): string {
       if (iface.role !== 'undefined') out += setVal(2, 'role', iface.role);
       out += setVal(2, 'description', iface.description);
       if (iface.mode !== 'static') out += setVal(2, 'mode', iface.mode);
+      if (iface.dhcpRelayService) {
+        out += setVal(2, 'dhcp-relay-service', 'enable');
+        if (iface.dhcpRelayIp.length > 0) out += line(2, `set dhcp-relay-ip ${iface.dhcpRelayIp.map(q).join(' ')}`);
+      }
       if (iface.estimatedUpstreamBandwidth) out += setVal(2, 'estimated-upstream-bandwidth', iface.estimatedUpstreamBandwidth);
       if (iface.estimatedDownstreamBandwidth) out += setVal(2, 'estimated-downstream-bandwidth', iface.estimatedDownstreamBandwidth);
+      if (iface.secondaryIP && iface.secondaryIPs.length > 0) {
+        out += setVal(2, 'secondary-IP', 'enable');
+        out += line(2, 'config secondaryip');
+        iface.secondaryIPs.forEach((sip, i) => {
+          out += line(3, `edit ${i + 1}`);
+          if (sip.ip && sip.netmask) out += line(4, `set ip ${sip.ip} ${sip.netmask}`);
+          if (sip.allowaccess.length > 0) out += setArr(4, 'allowaccess', sip.allowaccess);
+          out += line(3, 'next');
+        });
+        out += line(2, 'end');
+      }
       out += line(1, 'next');
     }
     out += 'end\n\n';
@@ -117,6 +132,29 @@ export function exportFortiConfig(config: FortigateConfig): string {
           out += setVal(4, 'end-ip', r.endIp);
           out += line(3, 'next');
         }
+        out += line(2, 'end');
+      }
+      if (srv.reservedAddresses.length > 0) {
+        out += line(2, 'config reserved-address');
+        srv.reservedAddresses.forEach((res, i) => {
+          out += line(3, `edit ${res.id || i + 1}`);
+          if (res.action && res.action !== 'assign') out += setVal(4, 'action', res.action);
+          out += setVal(4, 'ip', res.ip);
+          out += setVal(4, 'mac', res.mac);
+          out += setVal(4, 'description', res.description);
+          out += line(3, 'next');
+        });
+        out += line(2, 'end');
+      }
+      if (srv.options.length > 0) {
+        out += line(2, 'config options');
+        srv.options.forEach((opt, i) => {
+          out += line(3, `edit ${opt.id || i + 1}`);
+          out += setVal(4, 'code', opt.code);
+          out += setVal(4, 'type', opt.type);
+          out += setVal(4, 'value', opt.value);
+          out += line(3, 'next');
+        });
         out += line(2, 'end');
       }
       out += line(1, 'next');

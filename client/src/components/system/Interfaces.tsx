@@ -100,6 +100,10 @@ const interfaceFields: FieldDef[] = [
   { key: 'ip', label: 'IP Address', type: 'text', group: 'IP Configuration', placeholder: '192.168.1.1' },
   { key: 'netmask', label: 'Subnet Mask', type: 'text', group: 'IP Configuration', placeholder: '255.255.255.0' },
   { key: 'allowaccess', label: 'Administrative Access', type: 'tagsinput', group: 'IP Configuration', placeholder: 'ping https ssh http fgfm', width: 'full' },
+  { key: '_secondaryIpText', label: 'Secondary IP Addresses', type: 'textarea', group: 'IP Configuration', width: 'full',
+    placeholder: '10.0.0.1 255.255.255.0 ping https\n172.16.0.1 255.255.0.0', helpText: 'One per line: IP netmask [admin-access...]' },
+  { key: 'dhcpRelayService', label: 'Enable DHCP Relay', type: 'checkbox', group: 'DHCP Relay' },
+  { key: 'dhcpRelayIp', label: 'Relay Server IPs', type: 'tagsinput', group: 'DHCP Relay', placeholder: 'Type a server IP and press Enter', width: 'full' },
   { key: 'interface', label: 'Parent Interface (for VLAN)', type: 'text', group: 'VLAN' },
   { key: 'vlanid', label: 'VLAN ID', type: 'number', group: 'VLAN' },
   { key: 'speed', label: 'Speed', type: 'select', group: 'Physical', options: [
@@ -177,10 +181,27 @@ export default function Interfaces() {
     { key: 'description', label: 'Description' },
   ];
 
+  const secondaryIpToText = (sips: SystemInterface['secondaryIPs']): string =>
+    sips.map(s => [s.ip, s.netmask, ...s.allowaccess].filter(Boolean).join(' ')).join('\n');
+
+  const textToSecondaryIp = (text: string): SystemInterface['secondaryIPs'] =>
+    text.split('\n').filter(l => l.trim()).map(line => {
+      const [ip, netmask, ...access] = line.trim().split(/\s+/);
+      return { ip: ip || '', netmask: netmask || '', allowaccess: access };
+    });
+
+  const openInterface = (item: SystemInterface, index: number, isNewItem: boolean) => {
+    setEditing({ item: { ...item, _secondaryIpText: secondaryIpToText(item.secondaryIPs) } as any, index });
+    setIsNew(isNewItem);
+  };
+
   const handleSaveInterface = () => {
     if (!editing) return;
-    if (isNew) addItem(PATH, editing.item);
-    else updateItem(PATH, editing.index, editing.item);
+    const { _secondaryIpText, ...item } = editing.item as any;
+    item.secondaryIPs = textToSecondaryIp(_secondaryIpText || '');
+    item.secondaryIP = item.secondaryIPs.length > 0;
+    if (isNew) addItem(PATH, item);
+    else updateItem(PATH, editing.index, item);
     setEditing(null);
   };
 
@@ -216,12 +237,10 @@ export default function Interfaces() {
         columns={interfaceColumns}
         data={groupedData}
         getRowKey={(item) => item.name}
-        onAdd={() => { setEditing({ item: { ...defaultInterface }, index: -1 }); setIsNew(true); }}
+        onAdd={() => openInterface({ ...defaultInterface }, -1, true)}
         onEdit={(item) => {
-          const di = item as DisplayInterface;
-          const { _isChild, _originalIndex, ...cleanItem } = di;
-          setEditing({ item: cleanItem as SystemInterface, index: _originalIndex });
-          setIsNew(false);
+          const { _isChild, _originalIndex, ...cleanItem } = item as DisplayInterface;
+          openInterface(cleanItem as SystemInterface, _originalIndex, false);
         }}
         onDelete={(item) => {
           const di = item as DisplayInterface;
@@ -229,8 +248,7 @@ export default function Interfaces() {
         }}
         onClone={(item) => {
           const { _isChild, _originalIndex, ...cleanItem } = item as DisplayInterface;
-          setEditing({ item: { ...(cleanItem as SystemInterface), name: cleanItem.name + '_copy' }, index: -1 });
-          setIsNew(true);
+          openInterface({ ...(cleanItem as SystemInterface), name: cleanItem.name + '_copy' }, -1, true);
         }}
         highlights={intfHighlights}
         onHighlight={(key, color) => setHighlight(PATH, key, color)}

@@ -305,6 +305,15 @@ function mapInterfaces(section: RawSection): SystemInterface[] {
   return section.entries.map((e) => {
     const p = e.properties;
     const ipVal = strArr(p['ip']);
+    const secondaryIPs: SystemInterface['secondaryIPs'] = [];
+    for (const child of e.children['secondaryip'] || []) {
+      const sip = strArr(child.properties['ip']);
+      secondaryIPs.push({
+        ip: sip[0] || '',
+        netmask: sip[1] || '',
+        allowaccess: strArr(child.properties['allowaccess']),
+      });
+    }
     return {
       name: e.name,
       ip: ipVal[0] || '',
@@ -321,8 +330,8 @@ function mapInterfaces(section: RawSection): SystemInterface[] {
       role: str(p['role'], 'undefined') as SystemInterface['role'],
       description: str(p['description']),
       mode: str(p['mode'], 'static') as SystemInterface['mode'],
-      secondaryIP: bool(p['secondary-IP']),
-      secondaryIPs: [],
+      secondaryIP: bool(p['secondary-IP']) || secondaryIPs.length > 0,
+      secondaryIPs,
       dhcpRelayService: bool(p['dhcp-relay-service']),
       dhcpRelayIp: strArr(p['dhcp-relay-ip']),
       defaultgw: bool(p['defaultgw'], true),
@@ -351,6 +360,25 @@ function mapDHCPServers(section: RawSection): DHCPServer[] {
         endIp: str(child.properties['end-ip']),
       });
     }
+    const reservedAddresses: DHCPServer['reservedAddresses'] = [];
+    for (const child of e.children['reserved-address'] || []) {
+      reservedAddresses.push({
+        id: num(child.properties['id'] || [child.name]),
+        ip: str(child.properties['ip']),
+        mac: str(child.properties['mac']),
+        description: str(child.properties['description']),
+        action: str(child.properties['action'], 'assign') as 'assign' | 'block',
+      });
+    }
+    const options: DHCPServer['options'] = [];
+    for (const child of e.children['options'] || []) {
+      options.push({
+        id: num(child.properties['id'] || [child.name]),
+        code: num(child.properties['code']),
+        type: str(child.properties['type'], 'hex') as 'hex' | 'string' | 'ip' | 'fqdn',
+        value: str(child.properties['value']),
+      });
+    }
     return {
       id: parseInt(e.name) || 0,
       interface: str(p['interface']),
@@ -368,8 +396,8 @@ function mapDHCPServers(section: RawSection): DHCPServer[] {
       ntpServer2: str(p['ntp-server2']),
       comments: str(p['description']) || str(p['comment']),
       ipRanges,
-      reservedAddresses: [],
-      options: [],
+      reservedAddresses,
+      options,
     };
   });
 }

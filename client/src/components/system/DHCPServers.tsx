@@ -42,6 +42,12 @@ export default function DHCPServers() {
     { key: '_ipRangeText', label: 'IP Ranges (one per line: startIP-endIP)', type: 'textarea', group: 'Network', width: 'full',
       placeholder: '192.168.1.100-192.168.1.200\n192.168.1.210-192.168.1.250',
       helpText: 'Format: startIP-endIP, one range per line' },
+    { key: '_reservedText', label: 'Reserved Addresses', type: 'textarea', group: 'Reservations', width: 'full',
+      placeholder: '00:11:22:33:44:55,192.168.1.50,Printer\naa:bb:cc:dd:ee:ff,192.168.1.51,NAS',
+      helpText: 'One per line: MAC,IP,description. Prefix a line with "block " to block that MAC instead of assigning.' },
+    { key: '_optionsText', label: 'DHCP Options', type: 'textarea', group: 'Options', width: 'full',
+      placeholder: '43,hex,0104c0a80101\n15,string,example.com',
+      helpText: 'One per line: code,type,value. Type is one of hex, string, ip, fqdn.' },
     { key: 'dnsServer1', label: 'DNS Server 1', type: 'text', group: 'DNS' },
     { key: 'dnsServer2', label: 'DNS Server 2', type: 'text', group: 'DNS' },
     { key: 'dnsServer3', label: 'DNS Server 3', type: 'text', group: 'DNS' },
@@ -64,8 +70,30 @@ export default function DHCPServers() {
     { key: 'defaultGateway', label: 'Gateway' },
     { key: 'netmask', label: 'Netmask' },
     { key: 'dnsServer1', label: 'DNS 1' },
+    { key: 'reservedAddresses', label: 'Reservations', width: '90px', render: (s) => s.reservedAddresses.length || '-' },
     { key: 'comments', label: 'Comments' },
   ];
+
+  const reservedToText = (res: DHCPServer['reservedAddresses']): string =>
+    res.map(r => `${r.action === 'block' ? 'block ' : ''}${r.mac},${r.ip}${r.description ? ',' + r.description : ''}`).join('\n');
+
+  const textToReserved = (text: string): DHCPServer['reservedAddresses'] =>
+    text.split('\n').filter(l => l.trim()).map((raw, i) => {
+      let line = raw.trim();
+      let action: 'assign' | 'block' = 'assign';
+      if (/^block\s+/i.test(line)) { action = 'block'; line = line.replace(/^block\s+/i, ''); }
+      const [mac, ip, ...rest] = line.split(',').map(s => s.trim());
+      return { id: i + 1, mac: mac || '', ip: ip || '', description: rest.join(',').trim(), action };
+    });
+
+  const optionsToText = (opts: DHCPServer['options']): string =>
+    opts.map(o => `${o.code},${o.type},${o.value}`).join('\n');
+
+  const textToOptions = (text: string): DHCPServer['options'] =>
+    text.split('\n').filter(l => l.trim()).map((line, i) => {
+      const [code, type, ...rest] = line.trim().split(',').map(s => s.trim());
+      return { id: i + 1, code: parseInt(code) || 0, type: (type || 'hex') as DHCPServer['options'][number]['type'], value: rest.join(',').trim() };
+    });
 
   const ipRangesToText = (ranges: DHCPServer['ipRanges']): string => {
     return ranges.map(r => `${r.startIp}-${r.endIp}`).join('\n');
@@ -78,18 +106,24 @@ export default function DHCPServers() {
     });
   };
 
+  const withText = (item: DHCPServer) => ({
+    ...item,
+    _ipRangeText: ipRangesToText(item.ipRanges),
+    _reservedText: reservedToText(item.reservedAddresses),
+    _optionsText: optionsToText(item.options),
+  });
+
   const handleEdit = (item: DHCPServer, index: number) => {
-    setEditing({
-      item: { ...item, _ipRangeText: ipRangesToText(item.ipRanges) } as any,
-      index,
-    });
+    setEditing({ item: withText(item) as any, index });
     setIsNew(false);
   };
 
   const handleSave = () => {
     if (!editing) return;
-    const { _ipRangeText, ...item } = editing.item as any;
+    const { _ipRangeText, _reservedText, _optionsText, ...item } = editing.item as any;
     item.ipRanges = textToIpRanges(_ipRangeText || '');
+    item.reservedAddresses = textToReserved(_reservedText || '');
+    item.options = textToOptions(_optionsText || '');
     if (isNew) addItem(PATH, item);
     else updateItem(PATH, editing.index, item);
     setEditing(null);
@@ -101,11 +135,11 @@ export default function DHCPServers() {
         getRowKey={(item) => String(item.id)}
         highlights={highlights}
         onHighlight={(key, color) => setHighlight(PATH, key, color)}
-        onAdd={() => { setEditing({ item: { ...defaultServer, _ipRangeText: '' } as any, index: -1 }); setIsNew(true); }}
+        onAdd={() => { setEditing({ item: withText(defaultServer) as any, index: -1 }); setIsNew(true); }}
         onEdit={handleEdit}
         onDelete={(_, index) => setDeleting(index)}
         onClone={(item) => {
-          setEditing({ item: { ...item, id: item.id + 1, _ipRangeText: ipRangesToText(item.ipRanges) } as any, index: -1 });
+          setEditing({ item: { ...withText(item), id: item.id + 1 } as any, index: -1 });
           setIsNew(true);
         }}
         onReorder={(from, to) => reorderItems(PATH, from, to)}
