@@ -151,12 +151,10 @@ export default function Interfaces() {
       </span>
     )},
     { key: 'alias', label: 'Alias' },
-    { key: 'type', label: 'Type', render: (i) => (
-      <span>{i.type}{i.type === 'vlan' && i.vlanid ? ` (ID: ${i.vlanid})` : ''}</span>
-    )},
+    { key: 'type', label: 'Type' },
+    { key: 'vlanid', label: 'VLAN ID', width: '90px', render: (i) => (i.vlanid ? String(i.vlanid) : '-') },
     { key: 'ip', label: 'IP / Netmask', render: (i) => i.ip ? `${i.ip} / ${i.netmask}` : '-' },
     { key: 'interface', label: 'Parent', render: (i) => i.interface || '-' },
-    { key: 'role', label: 'Role' },
     { key: 'status', label: 'Status', render: (i) => <StatusBadge value={i.status} /> },
     { key: 'allowaccess', label: 'Admin Access', render: (i) => i.allowaccess.join(', ') || '-' },
   ];

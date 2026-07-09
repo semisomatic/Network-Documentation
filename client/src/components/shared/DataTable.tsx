@@ -284,6 +284,15 @@ export default function DataTable<T extends Record<string, any>>({
                     onDragOver={canDrag ? handleDragOver : undefined}
                     onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
                     onContextMenu={(e) => handleContextMenu(e, item, index)}
+                    onDoubleClick={
+                      onEdit
+                        ? (e) => {
+                            // Ignore double-clicks that land on the action buttons
+                            if ((e.target as HTMLElement).closest('button')) return;
+                            onEdit(item, index);
+                          }
+                        : undefined
+                    }
                     className={`
                       ${canDrag ? 'cursor-grab active:cursor-grabbing' : ''}
                       ${isDragTarget ? 'border-t-2 !border-t-forti-accent bg-blue-50' : ''}
