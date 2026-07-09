@@ -116,6 +116,16 @@ export default function DataTable<T extends Record<string, any>>({
     });
   }, [filteredData, sortKey, sortDir]);
 
+  // Map each row (by object identity) back to its index in the underlying `data`
+  // array, so edit/delete/clone/double-click act on the right entry even when a
+  // sort or search reorders/filters the visible rows. filter()/sort() preserve
+  // object references, so identity lookup is reliable.
+  const originalIndexMap = useMemo(() => {
+    const m = new Map<T, number>();
+    data.forEach((item, i) => m.set(item, i));
+    return m;
+  }, [data]);
+
   const handleSort = (key: string) => {
     if (sortKey === key) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -266,9 +276,14 @@ export default function DataTable<T extends Record<string, any>>({
                 </td>
               </tr>
             ) : (
-              sortedData.map((item, index) => {
-                const isDragTarget = dragOverIndex === index && dragIndex !== index;
-                const isBeingDragged = dragIndex === index;
+              sortedData.map((item, viewIndex) => {
+                // viewIndex = position in the visible (sorted/filtered) list, used
+                // for drag visuals. index = position in the underlying data array,
+                // used for all data mutations. They coincide while dragging is
+                // enabled (drag is disabled during sort/search).
+                const index = originalIndexMap.get(item) ?? viewIndex;
+                const isDragTarget = dragOverIndex === viewIndex && dragIndex !== viewIndex;
+                const isBeingDragged = dragIndex === viewIndex;
                 const rowKey = getRowKey ? getRowKey(item, index) : String(index);
                 const rowHighlight = highlights?.[rowKey];
                 const warnings = getWarnings ? getWarnings(item) : [];
@@ -277,12 +292,12 @@ export default function DataTable<T extends Record<string, any>>({
                   <tr
                     key={rowKey}
                     draggable={canDrag}
-                    onDragStart={canDrag ? (e) => handleDragStart(e, index) : undefined}
+                    onDragStart={canDrag ? (e) => handleDragStart(e, viewIndex) : undefined}
                     onDragEnd={canDrag ? handleDragEnd : undefined}
-                    onDragEnter={canDrag ? (e) => handleDragEnter(e, index) : undefined}
+                    onDragEnter={canDrag ? (e) => handleDragEnter(e, viewIndex) : undefined}
                     onDragLeave={canDrag ? handleDragLeave : undefined}
                     onDragOver={canDrag ? handleDragOver : undefined}
-                    onDrop={canDrag ? (e) => handleDrop(e, index) : undefined}
+                    onDrop={canDrag ? (e) => handleDrop(e, viewIndex) : undefined}
                     onContextMenu={(e) => handleContextMenu(e, item, index)}
                     onDoubleClick={
                       onEdit
