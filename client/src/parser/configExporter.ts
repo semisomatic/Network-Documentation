@@ -68,6 +68,115 @@ export function exportFortiConfig(config: FortigateConfig): string {
   if (d.dnsOverTls !== 'disable') out += setVal(1, 'dns-over-tls', d.dnsOverTls);
   out += 'end\n\n';
 
+  // --- High Availability ---
+  const ha = config.system.ha;
+  if (ha.mode !== 'standalone') {
+    out += 'config system ha\n';
+    out += setVal(1, 'mode', ha.mode);
+    out += setVal(1, 'group-name', ha.groupName);
+    out += setVal(1, 'group-id', ha.groupId);
+    if (ha.priority !== 128) out += setVal(1, 'priority', ha.priority);
+    if (ha.override) out += setVal(1, 'override', true);
+    if (ha.hbdev.length > 0) out += line(1, `set hbdev ${ha.hbdev.map((h) => `${q(h)} 50`).join(' ')}`);
+    if (ha.sessionPickup) out += setVal(1, 'session-pickup', true);
+    if (ha.monitorInterfaces.length > 0) out += setArr(1, 'monitor', ha.monitorInterfaces);
+    if (ha.managementInterface) {
+      out += setVal(1, 'ha-mgmt-status', 'enable');
+      out += setVal(1, 'ha-mgmt-interface', ha.managementInterface);
+      out += setVal(1, 'ha-mgmt-interface-gateway', ha.managementGateway);
+    }
+    out += 'end\n\n';
+  }
+
+  // --- NTP ---
+  const ntp = config.system.ntp;
+  if (ntp.type === 'custom' || ntp.servers.length > 0 || !ntp.syncEnabled) {
+    out += 'config system ntp\n';
+    out += setVal(1, 'ntpsync', ntp.syncEnabled ? 'enable' : 'disable');
+    out += setVal(1, 'type', ntp.type);
+    if (ntp.syncInterval !== 60) out += setVal(1, 'syncinterval', ntp.syncInterval);
+    if (ntp.type === 'custom' && ntp.servers.length > 0) {
+      out += line(1, 'config ntpserver');
+      ntp.servers.forEach((s, i) => {
+        out += line(2, `edit ${i + 1}`);
+        out += setVal(3, 'server', s);
+        out += line(2, 'next');
+      });
+      out += line(1, 'end');
+    }
+    if (ntp.sourceInterface) out += setVal(1, 'interface', ntp.sourceInterface);
+    out += 'end\n\n';
+  }
+
+  // --- SNMP ---
+  const snmp = config.system.snmp;
+  if (snmp.status === 'enable' || snmp.communities.length > 0) {
+    out += 'config system snmp sysinfo\n';
+    out += setVal(1, 'status', snmp.status);
+    out += setVal(1, 'description', snmp.description);
+    out += setVal(1, 'contact-info', snmp.contact);
+    out += setVal(1, 'location', snmp.location);
+    out += 'end\n\n';
+    if (snmp.communities.length > 0) {
+      out += 'config system snmp community\n';
+      snmp.communities.forEach((c, i) => {
+        out += line(1, `edit ${c.id || i + 1}`);
+        out += setVal(2, 'name', c.name);
+        if (c.status === 'disable') out += setVal(2, 'status', 'disable');
+        if (c.hosts.length > 0) {
+          out += line(2, 'config hosts');
+          c.hosts.forEach((h, hi) => {
+            out += line(3, `edit ${hi + 1}`);
+            out += setVal(4, 'ip', h);
+            out += line(3, 'next');
+          });
+          out += line(2, 'end');
+        }
+        if (!c.queryV1) out += setVal(2, 'query-v1-status', 'disable');
+        if (!c.queryV2c) out += setVal(2, 'query-v2c-status', 'disable');
+        if (!c.trapV1) out += setVal(2, 'trap-v1-status', 'disable');
+        if (!c.trapV2c) out += setVal(2, 'trap-v2c-status', 'disable');
+        out += line(1, 'next');
+      });
+      out += 'end\n\n';
+    }
+  }
+
+  // --- Central Management (FortiManager) ---
+  const cm = config.system.centralManagement;
+  if (cm.status === 'enable') {
+    out += 'config system central-management\n';
+    out += setVal(1, 'type', cm.type || (cm.mode === 'cloud' ? 'fortiguard' : 'fortimanager'));
+    if (cm.mode === 'local' && cm.server) out += setVal(1, 'fmg', cm.server);
+    if (cm.serialNumber) out += setVal(1, 'serial-number', cm.serialNumber);
+    out += 'end\n\n';
+  }
+
+  // --- Logging: FortiAnalyzer ---
+  const faz = config.logging.fortianalyzer;
+  if (faz.status === 'enable') {
+    out += `config log ${faz.mode === 'cloud' ? 'fortianalyzer-cloud' : 'fortianalyzer'} setting\n`;
+    out += setVal(1, 'status', 'enable');
+    if (faz.mode === 'local' && faz.server) out += setVal(1, 'server', faz.server);
+    out += setVal(1, 'upload-option', faz.uploadOption);
+    if (faz.sourceInterface) out += setVal(1, 'interface', faz.sourceInterface);
+    out += 'end\n\n';
+  }
+
+  // --- Logging: Syslog ---
+  const syslog = config.logging.syslog;
+  if (syslog.status === 'enable') {
+    out += 'config log syslogd setting\n';
+    out += setVal(1, 'status', 'enable');
+    out += setVal(1, 'server', syslog.server);
+    if (syslog.port !== 514) out += setVal(1, 'port', syslog.port);
+    if (syslog.mode !== 'udp') out += setVal(1, 'mode', syslog.mode);
+    out += setVal(1, 'facility', syslog.facility);
+    if (syslog.format !== 'default') out += setVal(1, 'format', syslog.format);
+    if (syslog.sourceInterface) out += setVal(1, 'interface', syslog.sourceInterface);
+    out += 'end\n\n';
+  }
+
   // --- System Interfaces ---
   if (config.system.interfaces.length > 0) {
     out += 'config system interface\n';

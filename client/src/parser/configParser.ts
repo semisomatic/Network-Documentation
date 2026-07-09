@@ -6,6 +6,8 @@
 import {
   FortigateConfig, createDefaultConfig,
   SystemInterface, SystemGlobal, DHCPServer, Administrator, DNSSettings, SystemZone,
+  HAConfig, NTPConfig, SNMPConfig, SNMPCommunity, CentralManagementConfig,
+  FortiAnalyzerConfig, SyslogConfig,
   StaticRoute, PolicyRoute,
   BGPConfig, BGPNeighbor, BGPNetwork,
   OSPFConfig, OSPFArea, OSPFNetwork, OSPFInterface,
@@ -410,6 +412,110 @@ function mapDNS(section: RawSection): Partial<DNSSettings> {
     protocol: str(p['protocol'], 'cleartext') as DNSSettings['protocol'],
     domain: str(p['domain']),
     dnsOverTls: str(p['dns-over-tls'], 'disable') as DNSSettings['dnsOverTls'],
+  };
+}
+
+function mapHA(section: RawSection): HAConfig {
+  const p = section.properties;
+  // hbdev is "port10" 50 "port9" 50 — keep only the interface names (non-numeric tokens)
+  const hbTokens = strArr(p['hbdev']);
+  const hbdev = hbTokens.filter((t) => !/^\d+$/.test(t));
+  return {
+    mode: str(p['mode'], 'standalone') as HAConfig['mode'],
+    groupName: str(p['group-name']),
+    groupId: num(p['group-id']),
+    priority: num(p['priority'], 128),
+    override: bool(p['override']),
+    hbdev,
+    sessionPickup: bool(p['session-pickup']),
+    monitorInterfaces: strArr(p['monitor']),
+    managementInterface: str(p['ha-mgmt-interface']),
+    managementGateway: str(p['ha-mgmt-interface-gateway']),
+  };
+}
+
+function mapNTP(section: RawSection, sections: Map<string, RawSection>): NTPConfig {
+  const p = section.properties;
+  const serverSection = sections.get('system ntp ntpserver');
+  const servers = serverSection
+    ? serverSection.entries.map((e) => str(e.properties['server'])).filter(Boolean)
+    : [];
+  return {
+    syncEnabled: bool(p['ntpsync'], true),
+    type: str(p['type'], 'fortiguard') as NTPConfig['type'],
+    syncInterval: num(p['syncinterval'], 60),
+    servers,
+    sourceInterface: str(p['source-ip-interface']) || str(p['interface']),
+  };
+}
+
+function mapSNMP(sysinfo: RawSection | undefined, communitySection: RawSection | undefined): SNMPConfig {
+  const p = sysinfo?.properties || {};
+  const communities: SNMPCommunity[] = [];
+  if (communitySection) {
+    communitySection.entries.forEach((e, i) => {
+      const cp = e.properties;
+      const hosts: string[] = [];
+      for (const host of e.children['hosts'] || []) {
+        const ip = strArr(host.properties['ip'])[0];
+        if (ip) hosts.push(ip);
+      }
+      communities.push({
+        id: num(cp['id'] || [String(i + 1)]),
+        name: e.name,
+        status: enableDisable(cp['status'], 'enable'),
+        hosts,
+        queryV1: bool(cp['query-v1-status'], true),
+        queryV2c: bool(cp['query-v2c-status'], true),
+        trapV1: bool(cp['trap-v1-status'], true),
+        trapV2c: bool(cp['trap-v2c-status'], true),
+      });
+    });
+  }
+  return {
+    status: enableDisable(p['status'], communities.length > 0 ? 'enable' : 'disable'),
+    description: str(p['description']),
+    contact: str(p['contact-info']),
+    location: str(p['location']),
+    communities,
+  };
+}
+
+function mapCentralManagement(section: RawSection): CentralManagementConfig {
+  const p = section.properties;
+  const type = str(p['type']);
+  return {
+    status: (str(p['type']) && str(p['type']) !== 'none') ? 'enable' : 'disable',
+    mode: type === 'fortiguard' ? 'cloud' : 'local',
+    type,
+    server: str(p['fmg']) || str(p['fmg-source-ip']),
+    serialNumber: str(p['serial-number']),
+  };
+}
+
+function mapFortiAnalyzer(local: RawSection | undefined, cloud: RawSection | undefined): FortiAnalyzerConfig {
+  const cloudOn = cloud ? bool(cloud.properties['status']) : false;
+  const src = cloudOn ? cloud! : local;
+  const p = src?.properties || {};
+  return {
+    status: enableDisable(p['status'], (src ? 'enable' : 'disable')),
+    mode: cloudOn ? 'cloud' : 'local',
+    server: str(p['server']),
+    uploadOption: str(p['upload-option'], 'realtime'),
+    sourceInterface: str(p['source-ip']) || str(p['interface']),
+  };
+}
+
+function mapSyslog(section: RawSection): SyslogConfig {
+  const p = section.properties;
+  return {
+    status: enableDisable(p['status'], 'enable'),
+    server: str(p['server']),
+    port: num(p['port'], 514),
+    mode: str(p['mode'], 'udp') as SyslogConfig['mode'],
+    facility: str(p['facility'], 'local7'),
+    format: str(p['format'], 'default') as SyslogConfig['format'],
+    sourceInterface: str(p['source-ip']) || str(p['interface']),
   };
 }
 
@@ -1159,6 +1265,27 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const sysZone = sections.get('system zone');
   if (sysZone) config.system.zones = mapSystemZones(sysZone);
+
+  const sysHa = sections.get('system ha');
+  if (sysHa) config.system.ha = mapHA(sysHa);
+
+  const sysNtp = sections.get('system ntp');
+  if (sysNtp) config.system.ntp = mapNTP(sysNtp, sections);
+
+  const snmpSysinfo = sections.get('system snmp sysinfo');
+  const snmpCommunity = sections.get('system snmp community');
+  if (snmpSysinfo || snmpCommunity) config.system.snmp = mapSNMP(snmpSysinfo, snmpCommunity);
+
+  const centralMgmt = sections.get('system central-management');
+  if (centralMgmt) config.system.centralManagement = mapCentralManagement(centralMgmt);
+
+  // Logging
+  const fazLocal = sections.get('log fortianalyzer setting');
+  const fazCloud = sections.get('log fortianalyzer-cloud setting');
+  if (fazLocal || fazCloud) config.logging.fortianalyzer = mapFortiAnalyzer(fazLocal, fazCloud);
+
+  const syslog = sections.get('log syslogd setting');
+  if (syslog) config.logging.syslog = mapSyslog(syslog);
 
   // Router
   const routerStatic = sections.get('router static');

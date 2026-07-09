@@ -28,7 +28,12 @@ export interface FortigateConfig {
     admins: Administrator[];
     dns: DNSSettings;
     zones: SystemZone[];
+    ha: HAConfig;
+    ntp: NTPConfig;
+    snmp: SNMPConfig;
+    centralManagement: CentralManagementConfig;
   };
+  logging: LoggingConfig;
   router: {
     static: StaticRoute[];
     policy: PolicyRoute[];
@@ -166,6 +171,82 @@ export interface DNSSettings {
   dnsOverTls: 'disable' | 'enable' | 'enforce';
   cacheNotFoundResponses: boolean;
   cacheTtl: number;
+}
+
+// --- High Availability ---
+export interface HAConfig {
+  mode: 'standalone' | 'a-p' | 'a-a';   // active-passive / active-active
+  groupName: string;
+  groupId: number;
+  priority: number;
+  override: boolean;
+  hbdev: string[];              // heartbeat interfaces
+  sessionPickup: boolean;
+  monitorInterfaces: string[];  // link-monitored interfaces
+  managementInterface: string;
+  managementGateway: string;
+}
+
+// --- NTP ---
+export interface NTPConfig {
+  syncEnabled: boolean;
+  type: 'fortiguard' | 'custom';
+  syncInterval: number;         // minutes
+  servers: string[];            // custom NTP servers
+  sourceInterface: string;
+}
+
+// --- SNMP ---
+export interface SNMPCommunity {
+  id: number;
+  name: string;
+  status: 'enable' | 'disable';
+  hosts: string[];              // allowed manager IPs
+  queryV1: boolean;
+  queryV2c: boolean;
+  trapV1: boolean;
+  trapV2c: boolean;
+}
+
+export interface SNMPConfig {
+  status: 'enable' | 'disable';
+  description: string;
+  contact: string;
+  location: string;
+  communities: SNMPCommunity[];
+}
+
+// --- Central Management (FortiManager) ---
+export interface CentralManagementConfig {
+  status: 'enable' | 'disable';
+  mode: 'local' | 'cloud';      // local = on-prem FortiManager, cloud = FortiManager Cloud
+  type: string;                 // fortimanager | fortiguard
+  server: string;               // FMG IP/FQDN when local
+  serialNumber: string;
+}
+
+// --- Logging ---
+export interface FortiAnalyzerConfig {
+  status: 'enable' | 'disable';
+  mode: 'local' | 'cloud';      // local = on-prem FortiAnalyzer, cloud = FortiAnalyzer Cloud
+  server: string;               // when local
+  uploadOption: string;         // realtime | 1-minute | 5-minute
+  sourceInterface: string;
+}
+
+export interface SyslogConfig {
+  status: 'enable' | 'disable';
+  server: string;
+  port: number;
+  mode: 'udp' | 'legacy-reliable' | 'reliable';
+  facility: string;
+  format: 'default' | 'csv' | 'cef' | 'rfc5424';
+  sourceInterface: string;
+}
+
+export interface LoggingConfig {
+  fortianalyzer: FortiAnalyzerConfig;
+  syslog: SyslogConfig;
 }
 
 // --- System Zone ---
@@ -935,6 +1016,28 @@ export function createDefaultConfig(): FortigateConfig {
         cacheTtl: 1800,
       },
       zones: [],
+      ha: {
+        mode: 'standalone', groupName: '', groupId: 0, priority: 128, override: false,
+        hbdev: [], sessionPickup: false, monitorInterfaces: [],
+        managementInterface: '', managementGateway: '',
+      },
+      ntp: {
+        syncEnabled: true, type: 'fortiguard', syncInterval: 60, servers: [], sourceInterface: '',
+      },
+      snmp: {
+        status: 'disable', description: '', contact: '', location: '', communities: [],
+      },
+      centralManagement: {
+        status: 'disable', mode: 'local', type: '', server: '', serialNumber: '',
+      },
+    },
+    logging: {
+      fortianalyzer: {
+        status: 'disable', mode: 'local', server: '', uploadOption: 'realtime', sourceInterface: '',
+      },
+      syslog: {
+        status: 'disable', server: '', port: 514, mode: 'udp', facility: 'local7', format: 'default', sourceInterface: '',
+      },
     },
     router: {
       static: [],
@@ -1051,6 +1154,12 @@ export function migrateProject(raw: any): FortigateProject {
     if (!project.config.wireless) {
       project.config.wireless = createDefaultConfig().wireless;
     }
+    const defaults = createDefaultConfig();
+    if (!project.config.system.ha) project.config.system.ha = defaults.system.ha;
+    if (!project.config.system.ntp) project.config.system.ntp = defaults.system.ntp;
+    if (!project.config.system.snmp) project.config.system.snmp = defaults.system.snmp;
+    if (!project.config.system.centralManagement) project.config.system.centralManagement = defaults.system.centralManagement;
+    if (!project.config.logging) project.config.logging = defaults.logging;
   }
   return project as FortigateProject;
 }

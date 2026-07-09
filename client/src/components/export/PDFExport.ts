@@ -214,6 +214,54 @@ export async function generatePDF(project: FortigateProject) {
     ['DNS Secondary', c.system.dns.secondary],
   ], y);
 
+  // High Availability
+  if (c.system.ha.mode !== 'standalone') {
+    const ha = c.system.ha;
+    y = addSection(doc, 'High Availability', y);
+    y = addKeyValueTable(doc, [
+      ['Mode', ha.mode === 'a-p' ? 'Active-Passive' : 'Active-Active'],
+      ['Group Name', ha.groupName],
+      ['Group ID', String(ha.groupId)],
+      ['Priority', String(ha.priority)],
+      ['Override', ha.override ? 'Enabled' : 'Disabled'],
+      ['Heartbeat Interfaces', ha.hbdev.join(', ')],
+      ['Monitored Interfaces', ha.monitorInterfaces.join(', ')],
+      ['Session Pickup', ha.sessionPickup ? 'Enabled' : 'Disabled'],
+      ['Mgmt Interface', ha.managementInterface],
+    ], y);
+  }
+
+  // Management, time & logging services
+  const svc: [string, string][] = [];
+  const ntp = c.system.ntp;
+  svc.push(['NTP Sync', ntp.syncEnabled ? (ntp.type === 'custom' ? `Custom: ${ntp.servers.join(', ')}` : 'FortiGuard') : 'Disabled']);
+  if (c.system.centralManagement.status === 'enable') {
+    const cm = c.system.centralManagement;
+    svc.push(['FortiManager', `${cm.mode === 'cloud' ? 'Cloud' : 'Local'}${cm.server ? ' — ' + cm.server : ''}`]);
+  }
+  if (c.logging.fortianalyzer.status === 'enable') {
+    const f = c.logging.fortianalyzer;
+    svc.push(['FortiAnalyzer', `${f.mode === 'cloud' ? 'Cloud' : 'Local'}${f.server ? ' — ' + f.server : ''} (${f.uploadOption})`]);
+  }
+  if (c.logging.syslog.status === 'enable') {
+    const s = c.logging.syslog;
+    svc.push(['Syslog', `${s.server}:${s.port} (${s.mode}, ${s.format})`]);
+  }
+  if (c.system.snmp.status === 'enable') {
+    svc.push(['SNMP', `Enabled${c.system.snmp.location ? ' — ' + c.system.snmp.location : ''}`]);
+  }
+  if (svc.length) {
+    y = addSection(doc, 'Management & Logging', y);
+    y = addKeyValueTable(doc, svc, y);
+    if (c.system.snmp.communities.length) {
+      y = addTable(doc,
+        ['Community', 'Hosts', 'v1', 'v2c', 'Status'],
+        c.system.snmp.communities.map(cm => [cm.name, cm.hosts.join(', '), cm.queryV1 ? 'Y' : 'N', cm.queryV2c ? 'Y' : 'N', cm.status]),
+        y,
+      );
+    }
+  }
+
   // --- Interfaces ---
   if (c.system.interfaces.length) {
     const zoneMap = new Map<string, string>();
