@@ -263,7 +263,11 @@ function str(val: string | string[] | undefined, def = ''): string {
 
 function strArr(val: string | string[] | undefined): string[] {
   if (val === undefined) return [];
-  return Array.isArray(val) ? val : val.split(' ');
+  // A single set-value is one logical token (the tokenizer already split
+  // unquoted lists into an array). Do NOT split on spaces, or quoted
+  // multi-word names like "Boca Subnets" would be broken apart.
+  if (Array.isArray(val)) return val;
+  return val === '' ? [] : [val];
 }
 
 function num(val: string | string[] | undefined, def = 0): number {
@@ -1152,33 +1156,8 @@ function mapSDWAN(section: RawSection, allSections: Map<string, RawSection>): Pa
     zones: [],
   };
 
-  // SD-WAN members: "config system sdwan" > "config members" > edit <seq>
-  const membersSection = allSections.get('system sdwan');
-  if (membersSection) {
-    // Parse from entries - the nested "config members" block produces child entries
-    for (const entry of membersSection.entries) {
-      // Entries at top level of system sdwan could be from nested config blocks
-      // Check if the entry has member-like properties
-      const ep = entry.properties;
-      if (ep['interface'] || ep['gateway'] || ep['zone']) {
-        result.members!.push({
-          seqNum: num(undefined, 0) || parseInt(entry.name, 10) || 0,
-          interface: str(ep['interface']),
-          zone: str(ep['zone']),
-          gateway: str(ep['gateway']),
-          source: str(ep['source']),
-          cost: num(ep['cost']),
-          weight: num(ep['weight'], 1),
-          priority: num(ep['priority'], 1),
-          status: enableDisable(ep['status'], 'enable'),
-          comment: str(ep['comment']),
-          volumeRatio: num(ep['volume-ratio'], 1),
-        });
-      }
-    }
-  }
-
-  // Try dedicated sub-sections if the parser split them out
+  // SD-WAN members: the nested "config members" block is flattened to the
+  // "system sdwan members" section by the parser.
   const membersSub = allSections.get('system sdwan members');
   if (membersSub) {
     for (const entry of membersSub.entries) {
@@ -1207,12 +1186,15 @@ function mapSDWAN(section: RawSection, allSections: Map<string, RawSection>): Pa
       result.healthChecks!.push({
         name: entry.name,
         server: strArr(ep['server']),
+        systemDns: bool(ep['system-dns']),
         protocol: str(ep['protocol'], 'ping') as SDWANHealthCheck['protocol'],
         probeMode: str(ep['probe-mode'], 'active') as SDWANHealthCheck['probeMode'],
         port: num(ep['port']),
         interval: num(ep['interval'], 500),
+        probeTimeout: num(ep['probe-timeout'], 500),
         failtime: num(ep['failtime'], 5),
-        recovertime: num(ep['recovertime'], 5),
+        recovertime: num(ep['recoverytime'], 5),
+        updateStaticRoute: bool(ep['update-static-route'], true),
         thresholdWarningJitter: num(ep['threshold-warning-jitter']),
         thresholdWarningLatency: num(ep['threshold-warning-latency']),
         thresholdWarningPacketloss: num(ep['threshold-warning-packetloss']),
@@ -1235,17 +1217,20 @@ function mapSDWAN(section: RawSection, allSections: Map<string, RawSection>): Pa
   if (rulesSub) {
     for (const entry of rulesSub.entries) {
       const ep = entry.properties;
+      // Rule -> SLA link comes from a nested "config sla / edit <health-check> / set id <n>"
+      const svcSla = (entry.children['sla'] || [])[0];
       result.rules!.push({
         id: parseInt(entry.name, 10) || 0,
         name: str(ep['name']),
         comment: str(ep['comments']) || str(ep['comment']),
+        priorityZone: str(ep['priority-zone']),
         srcAddr: strArr(ep['src']),
         dstAddr: strArr(ep['dst']),
         srcIntf: strArr(ep['input-device']),
         service: strArr(ep['internet-service-name'] || ep['service']),
         mode: str(ep['mode'], 'sla') as SDWANRule['mode'],
-        healthCheck: str(ep['health-check']),
-        slaId: num(ep['sla-id']),
+        healthCheck: svcSla ? svcSla.name : str(ep['health-check']),
+        slaId: svcSla ? num(svcSla.properties['id']) : num(ep['sla-id']),
         members: strArr(ep['priority-members']).map((s) => parseInt(s, 10) || 0),
         protocol: num(ep['protocol']),
         startPort: num(ep['start-port']),

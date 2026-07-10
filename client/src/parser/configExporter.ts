@@ -450,6 +450,103 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- SD-WAN ---
+  const sd = config.sdwan;
+  if (sd.status === 'enable' || sd.members.length > 0) {
+    out += 'config system sdwan\n';
+    out += setVal(1, 'status', sd.status);
+    out += setVal(1, 'load-balance-mode', sd.loadBalanceMode);
+
+    if (sd.zones.length > 0) {
+      out += line(1, 'config zone');
+      for (const z of sd.zones) {
+        out += line(2, `edit ${q(z.name)}`);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+
+    if (sd.members.length > 0) {
+      out += line(1, 'config members');
+      for (const m of sd.members) {
+        out += line(2, `edit ${m.seqNum}`);
+        out += setVal(3, 'interface', m.interface);
+        out += setVal(3, 'zone', m.zone);
+        if (m.gateway) out += setVal(3, 'gateway', m.gateway);
+        if (m.source) out += setVal(3, 'source', m.source);
+        if (m.cost) out += setVal(3, 'cost', m.cost);
+        if (m.priority !== 1) out += setVal(3, 'priority', m.priority);
+        if (m.weight !== 1) out += setVal(3, 'weight', m.weight);
+        if (m.status === 'disable') out += setVal(3, 'status', 'disable');
+        out += setVal(3, 'comment', m.comment);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+
+    if (sd.healthChecks.length > 0) {
+      out += line(1, 'config health-check');
+      for (const h of sd.healthChecks) {
+        out += line(2, `edit ${q(h.name)}`);
+        if (h.systemDns) out += setVal(3, 'system-dns', 'enable');
+        else if (h.server.length > 0) out += line(3, `set server ${h.server.map(q).join(' ')}`);
+        if (h.protocol !== 'ping') out += setVal(3, 'protocol', h.protocol);
+        if (h.probeMode !== 'active') out += setVal(3, 'probe-mode', h.probeMode);
+        if (h.port) out += setVal(3, 'port', h.port);
+        out += setVal(3, 'interval', h.interval);
+        if (h.probeTimeout) out += setVal(3, 'probe-timeout', h.probeTimeout);
+        if (h.failtime !== 5) out += setVal(3, 'failtime', h.failtime);
+        if (h.recovertime !== 5) out += setVal(3, 'recoverytime', h.recovertime);
+        if (!h.updateStaticRoute) out += setVal(3, 'update-static-route', 'disable');
+        if (h.members.length > 0) out += line(3, `set members ${h.members.join(' ')}`);
+        if (h.slaTargets.length > 0) {
+          out += line(3, 'config sla');
+          for (const t of h.slaTargets) {
+            out += line(4, `edit ${t.id}`);
+            if (t.latencyThreshold) out += setVal(5, 'latency-threshold', t.latencyThreshold);
+            if (t.jitterThreshold) out += setVal(5, 'jitter-threshold', t.jitterThreshold);
+            if (t.packetlossThreshold) out += setVal(5, 'packetloss-threshold', t.packetlossThreshold);
+            out += line(4, 'next');
+          }
+          out += line(3, 'end');
+        }
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+
+    if (sd.rules.length > 0) {
+      out += line(1, 'config service');
+      for (const r of sd.rules) {
+        out += line(2, `edit ${r.id}`);
+        out += setVal(3, 'name', r.name);
+        out += setVal(3, 'comments', r.comment);
+        if (r.mode !== 'sla') out += setVal(3, 'mode', r.mode);
+        if (r.srcAddr.length > 0) out += setArr(3, 'src', r.srcAddr);
+        if (r.dstAddr.length > 0) out += setArr(3, 'dst', r.dstAddr);
+        if (r.internetServiceName.length > 0) {
+          out += setVal(3, 'internet-service', 'enable');
+          out += setArr(3, 'internet-service-name', r.internetServiceName);
+        }
+        if (r.protocol) out += setVal(3, 'protocol', r.protocol);
+        if (r.startPort) out += setVal(3, 'start-port', r.startPort);
+        if (r.endPort) out += setVal(3, 'end-port', r.endPort);
+        if (r.healthCheck) {
+          out += line(3, 'config sla');
+          out += line(4, `edit ${q(r.healthCheck)}`);
+          if (r.slaId) out += setVal(5, 'id', r.slaId);
+          out += line(4, 'next');
+          out += line(3, 'end');
+        }
+        if (r.priorityZone) out += setVal(3, 'priority-zone', r.priorityZone);
+        else if (r.members.length > 0) out += line(3, `set priority-members ${r.members.join(' ')}`);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+    out += 'end\n\n';
+  }
+
   // --- Firewall Addresses ---
   if (config.firewallAddress.length > 0) {
     out += 'config firewall address\n';

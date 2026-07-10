@@ -802,12 +802,15 @@ export interface SDWANMember {
 export interface SDWANHealthCheck {
   name: string;
   server: string[];
-  protocol: 'ping' | 'tcp-echo' | 'udp-echo' | 'http' | 'dns' | 'twamp';
+  systemDns: boolean;
+  protocol: 'ping' | 'tcp-echo' | 'udp-echo' | 'http' | 'https' | 'dns' | 'twamp';
   probeMode: 'active' | 'passive' | 'prefer-passive';
   port: number;
   interval: number;
+  probeTimeout: number;
   failtime: number;
   recovertime: number;
+  updateStaticRoute: boolean;
   thresholdWarningJitter: number;
   thresholdWarningLatency: number;
   thresholdWarningPacketloss: number;
@@ -827,6 +830,7 @@ export interface SDWANRule {
   id: number;
   name: string;
   comment: string;
+  priorityZone: string;
   srcAddr: string[];
   dstAddr: string[];
   srcIntf: string[];
@@ -1187,9 +1191,13 @@ export function migrateProject(raw: any): FortigateProject {
     }
     for (const hc of project.config.sdwan?.healthChecks || []) {
       if (hc.probeMode === undefined) hc.probeMode = 'active';
+      if (hc.systemDns === undefined) hc.systemDns = false;
+      if (hc.probeTimeout === undefined) hc.probeTimeout = 500;
+      if (hc.updateStaticRoute === undefined) hc.updateStaticRoute = true;
     }
     for (const r of project.config.sdwan?.rules || []) {
       if (r.comment === undefined) r.comment = '';
+      if (r.priorityZone === undefined) r.priorityZone = '';
     }
   }
   return project as FortigateProject;

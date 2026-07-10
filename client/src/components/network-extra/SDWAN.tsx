@@ -18,15 +18,15 @@ const defaultMember: SDWANMember = {
 };
 
 const defaultHealthCheck: SDWANHealthCheck = {
-  name: '', server: [], protocol: 'ping', probeMode: 'active', port: 0,
-  interval: 500, failtime: 5, recovertime: 5,
+  name: '', server: [], systemDns: false, protocol: 'ping', probeMode: 'active', port: 0,
+  interval: 500, probeTimeout: 500, failtime: 5, recovertime: 5, updateStaticRoute: true,
   thresholdWarningJitter: 0, thresholdWarningLatency: 0, thresholdWarningPacketloss: 0,
   thresholdAlertJitter: 0, thresholdAlertLatency: 0, thresholdAlertPacketloss: 0,
   members: [], slaTargets: [],
 };
 
 const defaultRule: SDWANRule = {
-  id: 0, name: '', comment: '', srcAddr: [], dstAddr: [], srcIntf: [], service: [],
+  id: 0, name: '', comment: '', priorityZone: '', srcAddr: [], dstAddr: [], srcIntf: [], service: [],
   mode: 'sla', healthCheck: '', slaId: 0, members: [], protocol: 0,
   startPort: 0, endPort: 0, routeTag: 0, status: 'enable', tieBreak: 'zone',
   internetService: false, internetServiceName: [],

@@ -109,9 +109,16 @@ export default function SDWANRuleEditor({ initial, isNew, onSave, onCancel }: Pr
               ))}
             </div>
           </FieldRow>
-          <FieldRow label="Interface preference" align="start">
-            <ObjectSelect options={memberOptions} value={draft.members.map(String)}
-              onChange={(v) => set({ members: v.map((x) => parseInt(x, 10)) })} placeholder="Select interface" />
+          <FieldRow label="Interface preference" align="start" >
+            <div>
+              <ObjectSelect options={memberOptions} value={draft.members.map(String)}
+                onChange={(v) => set({ members: v.map((x) => parseInt(x, 10)) })} placeholder="Select interface" />
+              <p className="text-xs text-forti-text-secondary mt-1">Or target a whole SD-WAN zone instead:</p>
+              <select className="forti-select max-w-[260px] mt-1" value={draft.priorityZone} onChange={(e) => set({ priorityZone: e.target.value })}>
+                <option value="">-- No zone --</option>
+                {config.sdwan.zones.map((z) => <option key={z.name} value={z.name}>{z.name}</option>)}
+              </select>
+            </div>
           </FieldRow>
           {draft.mode === 'sla' && (
             <>

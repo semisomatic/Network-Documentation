@@ -43,11 +43,16 @@ export default function SLAEditor({ initial, isNew, onSave, onCancel }: Props) {
         </FieldRow>
         <FieldRow label="Protocol">
           <Segmented value={draft.protocol} onChange={(v) => set({ protocol: v as SDWANHealthCheck['protocol'] })}
-            options={[{ value: 'ping', label: 'Ping' }, { value: 'http', label: 'HTTP' }, { value: 'dns', label: 'DNS' }]} />
+            options={[{ value: 'ping', label: 'Ping' }, { value: 'http', label: 'HTTP' }, { value: 'https', label: 'HTTPS' }, { value: 'dns', label: 'DNS' }]} />
         </FieldRow>
-        <FieldRow label="Server" align="start">
-          <StringChips value={draft.server} onChange={(v) => set({ server: v })} placeholder="10.10.200.1" />
+        <FieldRow label="Use system DNS">
+          <Toggle checked={draft.systemDns} onChange={(v) => set({ systemDns: v })} />
         </FieldRow>
+        {!draft.systemDns && (
+          <FieldRow label="Server" align="start">
+            <StringChips value={draft.server} onChange={(v) => set({ server: v })} placeholder="10.10.200.1" />
+          </FieldRow>
+        )}
         <FieldRow label="Participants" align="start">
           <div>
             <Segmented value={participantsAll ? 'all' : 'specify'} onChange={(v) => setParticipantsAll(v === 'all')}
@@ -98,6 +103,12 @@ export default function SLAEditor({ initial, isNew, onSave, onCancel }: Props) {
               <span className="text-sm text-forti-text-secondary">ms</span>
             </div>
           </FieldRow>
+          <FieldRow label={<>Probe timeout <InfoDot tip="Time to wait for a probe reply" /></>}>
+            <div className="flex items-center gap-2">
+              <input type="number" className="forti-input max-w-[160px]" value={draft.probeTimeout} onChange={(e) => set({ probeTimeout: parseInt(e.target.value) || 500 })} />
+              <span className="text-sm text-forti-text-secondary">ms</span>
+            </div>
+          </FieldRow>
           <FieldRow label={<>Failures before inactive <InfoDot tip="Consecutive failed probes before the link is down" /></>}>
             <input type="number" className="forti-input max-w-[160px]" value={draft.failtime} onChange={(e) => set({ failtime: parseInt(e.target.value) || 5 })} />
           </FieldRow>
@@ -106,6 +117,13 @@ export default function SLAEditor({ initial, isNew, onSave, onCancel }: Props) {
               <input type="number" className="forti-input max-w-[160px]" value={draft.recovertime} onChange={(e) => set({ recovertime: parseInt(e.target.value) || 5 })} />
               <span className="text-sm text-forti-text-secondary">check(s)</span>
             </div>
+          </FieldRow>
+        </FormSection>
+
+        {/* Actions when Inactive */}
+        <FormSection title="Actions when Inactive">
+          <FieldRow label={<>Update static route <InfoDot tip="Remove static routes through a member when its SLA fails" /></>}>
+            <Toggle checked={draft.updateStaticRoute} onChange={(v) => set({ updateStaticRoute: v })} />
           </FieldRow>
         </FormSection>
       </Card>
