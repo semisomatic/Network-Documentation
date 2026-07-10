@@ -32,9 +32,12 @@ export default {
           'text-secondary': '#64748b',
           'text-sidebar': '#c8d6e5',
           'text-sidebar-active': '#ffffff',
-          // Accent
-          accent: '#3b82f6',
-          'accent-hover': '#2563eb',
+          // Accent (FortiGate green)
+          accent: '#2f8a46',
+          'accent-hover': '#256e37',
+          'accent-soft': '#e7f3ec',
+          // Section band background
+          band: '#eaeef1',
         },
       },
       fontFamily: {
