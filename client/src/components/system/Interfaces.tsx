@@ -3,6 +3,7 @@ import DataTable, { Column } from '../shared/DataTable';
 import EditModal, { FieldDef } from '../shared/EditModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import StatusBadge from '../shared/StatusBadge';
+import InterfaceEditor from './InterfaceEditor';
 import { useProjectStore } from '../../store/projectStore';
 import type { SystemInterface, SystemZone } from '../../types/fortigate';
 
@@ -78,46 +79,6 @@ const defaultZone: SystemZone = {
   name: '', interface: [], intrazone: 'deny', description: '',
 };
 
-const interfaceFields: FieldDef[] = [
-  { key: 'name', label: 'Name', type: 'text', required: true, group: 'General' },
-  { key: 'alias', label: 'Alias', type: 'text', group: 'General' },
-  { key: 'type', label: 'Type', type: 'select', group: 'General', options: [
-    { value: 'physical', label: 'Physical' }, { value: 'vlan', label: 'VLAN' },
-    { value: 'aggregate', label: 'Aggregate' }, { value: 'loopback', label: 'Loopback' },
-    { value: 'tunnel', label: 'Tunnel' }, { value: 'redundant', label: 'Redundant' },
-    { value: 'switch', label: 'Switch' },
-  ]},
-  { key: 'role', label: 'Role', type: 'select', group: 'General', options: [
-    { value: 'lan', label: 'LAN' }, { value: 'wan', label: 'WAN' },
-    { value: 'dmz', label: 'DMZ' }, { value: 'undefined', label: 'Undefined' },
-  ]},
-  { key: 'status', label: 'Status', type: 'select', group: 'General', options: [
-    { value: 'up', label: 'Up' }, { value: 'down', label: 'Down' },
-  ]},
-  { key: 'mode', label: 'Addressing Mode', type: 'select', group: 'IP Configuration', options: [
-    { value: 'static', label: 'Static' }, { value: 'dhcp', label: 'DHCP' }, { value: 'pppoe', label: 'PPPoE' },
-  ]},
-  { key: 'ip', label: 'IP Address', type: 'text', group: 'IP Configuration', placeholder: '192.168.1.1' },
-  { key: 'netmask', label: 'Subnet Mask', type: 'text', group: 'IP Configuration', placeholder: '255.255.255.0' },
-  { key: 'allowaccess', label: 'Administrative Access', type: 'tagsinput', group: 'IP Configuration', placeholder: 'ping https ssh http fgfm', width: 'full' },
-  { key: '_secondaryIpText', label: 'Secondary IP Addresses', type: 'textarea', group: 'IP Configuration', width: 'full',
-    placeholder: '10.0.0.1 255.255.255.0 ping https\n172.16.0.1 255.255.0.0', helpText: 'One per line: IP netmask [admin-access...]' },
-  { key: 'dhcpRelayService', label: 'Enable DHCP Relay', type: 'checkbox', group: 'DHCP Relay' },
-  { key: 'dhcpRelayIp', label: 'Relay Server IPs', type: 'tagsinput', group: 'DHCP Relay', placeholder: 'Type a server IP and press Enter', width: 'full' },
-  { key: 'interface', label: 'Parent Interface (for VLAN)', type: 'text', group: 'VLAN' },
-  { key: 'vlanid', label: 'VLAN ID', type: 'number', group: 'VLAN' },
-  { key: 'speed', label: 'Speed', type: 'select', group: 'Physical', options: [
-    { value: 'auto', label: 'Auto' }, { value: '10full', label: '10 Full' },
-    { value: '100full', label: '100 Full' }, { value: '1000full', label: '1000 Full' },
-    { value: '10000full', label: '10000 Full' },
-  ]},
-  { key: 'mtu', label: 'MTU', type: 'number', group: 'Physical', defaultValue: 1500 },
-  { key: 'mtuOverride', label: 'MTU Override', type: 'checkbox', group: 'Physical' },
-  { key: 'estimatedUpstreamBandwidth', label: 'Estimated Upstream Bandwidth (kbps)', type: 'number', group: 'Bandwidth' },
-  { key: 'estimatedDownstreamBandwidth', label: 'Estimated Downstream Bandwidth (kbps)', type: 'number', group: 'Bandwidth' },
-  { key: 'description', label: 'Description', type: 'textarea', group: 'Other', width: 'full' },
-];
-
 const zoneFields: FieldDef[] = [
   { key: 'name', label: 'Zone Name', type: 'text', required: true },
   { key: 'interface', label: 'Member Interfaces', type: 'tagsinput', placeholder: 'Type interface name and press Enter', width: 'full' },
@@ -135,9 +96,8 @@ export default function Interfaces() {
   const data = config.system.interfaces;
   const zones = config.system.zones || [];
 
-  // Interface state
-  const [editing, setEditing] = useState<{ item: SystemInterface; index: number } | null>(null);
-  const [isNew, setIsNew] = useState(false);
+  // Interface editor state (full-page)
+  const [editorState, setEditorState] = useState<{ item: SystemInterface; index: number; isNew: boolean } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
   // Zone state
@@ -181,28 +141,11 @@ export default function Interfaces() {
     { key: 'description', label: 'Description' },
   ];
 
-  const secondaryIpToText = (sips: SystemInterface['secondaryIPs']): string =>
-    sips.map(s => [s.ip, s.netmask, ...s.allowaccess].filter(Boolean).join(' ')).join('\n');
-
-  const textToSecondaryIp = (text: string): SystemInterface['secondaryIPs'] =>
-    text.split('\n').filter(l => l.trim()).map(line => {
-      const [ip, netmask, ...access] = line.trim().split(/\s+/);
-      return { ip: ip || '', netmask: netmask || '', allowaccess: access };
-    });
-
-  const openInterface = (item: SystemInterface, index: number, isNewItem: boolean) => {
-    setEditing({ item: { ...item, _secondaryIpText: secondaryIpToText(item.secondaryIPs) } as any, index });
-    setIsNew(isNewItem);
-  };
-
-  const handleSaveInterface = () => {
-    if (!editing) return;
-    const { _secondaryIpText, ...item } = editing.item as any;
-    item.secondaryIPs = textToSecondaryIp(_secondaryIpText || '');
-    item.secondaryIP = item.secondaryIPs.length > 0;
-    if (isNew) addItem(PATH, item);
-    else updateItem(PATH, editing.index, item);
-    setEditing(null);
+  const saveInterface = (item: SystemInterface) => {
+    if (!editorState) return;
+    if (editorState.isNew) addItem(PATH, item);
+    else updateItem(PATH, editorState.index, item);
+    setEditorState(null);
   };
 
   const handleSaveZone = () => {
@@ -211,6 +154,17 @@ export default function Interfaces() {
     else updateItem(ZONE_PATH, editingZone.index, editingZone.item);
     setEditingZone(null);
   };
+
+  if (editorState) {
+    return (
+      <InterfaceEditor
+        initial={editorState.item}
+        isNew={editorState.isNew}
+        onSave={saveInterface}
+        onCancel={() => setEditorState(null)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -237,10 +191,10 @@ export default function Interfaces() {
         columns={interfaceColumns}
         data={groupedData}
         getRowKey={(item) => item.name}
-        onAdd={() => openInterface({ ...defaultInterface }, -1, true)}
+        onAdd={() => setEditorState({ item: { ...defaultInterface }, index: -1, isNew: true })}
         onEdit={(item) => {
           const { _isChild, _originalIndex, ...cleanItem } = item as DisplayInterface;
-          openInterface(cleanItem as SystemInterface, _originalIndex, false);
+          setEditorState({ item: cleanItem as SystemInterface, index: _originalIndex, isNew: false });
         }}
         onDelete={(item) => {
           const di = item as DisplayInterface;
@@ -248,24 +202,11 @@ export default function Interfaces() {
         }}
         onClone={(item) => {
           const { _isChild, _originalIndex, ...cleanItem } = item as DisplayInterface;
-          openInterface({ ...(cleanItem as SystemInterface), name: cleanItem.name + '_copy' }, -1, true);
+          setEditorState({ item: { ...(cleanItem as SystemInterface), name: cleanItem.name + '_copy' }, index: -1, isNew: true });
         }}
         highlights={intfHighlights}
         onHighlight={(key, color) => setHighlight(PATH, key, color)}
       />
-
-      {/* Interface Edit Modal */}
-      {editing && (
-        <EditModal
-          title="Interface"
-          fields={interfaceFields}
-          values={editing.item}
-          isNew={isNew}
-          onChange={(key, val) => setEditing({ ...editing, item: { ...editing.item, [key]: val } })}
-          onSave={handleSaveInterface}
-          onCancel={() => setEditing(null)}
-        />
-      )}
 
       {/* Zone Edit Modal */}
       {editingZone && (
