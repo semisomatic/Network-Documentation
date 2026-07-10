@@ -684,6 +684,8 @@ export function exportFortiConfig(config: FortigateConfig): string {
       out += setArr(2, 'groups', pol.groups);
       out += setArr(2, 'users', pol.users);
       if (pol.inspectionMode !== 'flow') out += setVal(2, 'inspection-mode', pol.inspectionMode);
+      if (pol.trafficShaper) out += setVal(2, 'traffic-shaper', pol.trafficShaper);
+      if (pol.trafficShaperReverse) out += setVal(2, 'traffic-shaper-reverse', pol.trafficShaperReverse);
       out += line(1, 'next');
     }
     out += 'end\n\n';

@@ -15,7 +15,7 @@ const defaultPolicy: FWPolicy = {
   fixedport: false, status: 'enable', logtraffic: 'utm', logtrafficStart: false,
   comments: '', utmStatus: false, avProfile: '', webfilterProfile: '',
   dnsfilterProfile: '', ipsSensor: '', applicationList: '', sslSshProfile: '',
-  inspectionMode: 'flow', groups: [], users: [],
+  inspectionMode: 'flow', trafficShaper: '', trafficShaperReverse: '', groups: [], users: [],
   internet_service: false, internet_service_name: [], internet_service_negate: false,
   captivePortalExempt: false, wccp: false, tcpMssSender: 0, tcpMssReceiver: 0,
   sessionTtl: 0, antiReplay: true, matchVip: false, diffservForward: false,

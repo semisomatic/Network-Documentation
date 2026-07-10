@@ -802,6 +802,8 @@ function mapFirewallPolicies(section: RawSection): FirewallPolicy[] {
       applicationList: str(p['application-list']),
       sslSshProfile: str(p['ssl-ssh-profile']),
       inspectionMode: str(p['inspection-mode'], 'flow') as 'proxy' | 'flow',
+      trafficShaper: str(p['traffic-shaper']),
+      trafficShaperReverse: str(p['traffic-shaper-reverse']),
       groups: strArr(p['groups']),
       users: strArr(p['users']),
       internet_service: bool(p['internet-service']),

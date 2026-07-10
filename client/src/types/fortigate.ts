@@ -422,6 +422,8 @@ export interface FirewallPolicy {
   applicationList: string;
   sslSshProfile: string;
   inspectionMode: 'proxy' | 'flow';
+  trafficShaper: string;
+  trafficShaperReverse: string;
   groups: string[];
   users: string[];
   internet_service: boolean;
@@ -1177,6 +1179,10 @@ export function migrateProject(raw: any): FortigateProject {
     if (!project.config.system.centralManagement) project.config.system.centralManagement = defaults.system.centralManagement;
     if (!project.config.logging) project.config.logging = defaults.logging;
     if (!project.config.user.fsso) project.config.user.fsso = [];
+    for (const pol of project.config.firewallPolicy || []) {
+      if (pol.trafficShaper === undefined) pol.trafficShaper = '';
+      if (pol.trafficShaperReverse === undefined) pol.trafficShaperReverse = '';
+    }
   }
   return project as FortigateProject;
 }

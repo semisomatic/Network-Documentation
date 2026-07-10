@@ -39,6 +39,7 @@ export default function PolicyEditor({ initial, isNew, onSave, onCancel }: Props
   const groupOptions: ObjectOption[] = config.user.group.map((g) => ({ value: g.name, label: g.name }));
   const poolOptions: ObjectOption[] = config.firewallIppool.map((p) => ({ value: p.name, label: p.name }));
   const schedOptions = ['always', ...config.firewallSchedule.map((s) => s.name)];
+  const shaperNames = config.trafficShaping.shapers.map((s) => s.name);
 
   // ---- security profile helper ----
   const profileRow = (label: string, key: keyof FWPolicy, profiles: { name: string }[]) => {
@@ -156,6 +157,32 @@ export default function PolicyEditor({ initial, isNew, onSave, onCancel }: Props
               <option value="">no-inspection</option>
               {config.securityProfiles.sslInspection.map((p) => <option key={p.name} value={p.name}>{p.name}</option>)}
             </select>
+          </FieldRow>
+        </FormSection>
+
+        {/* Traffic Shaping */}
+        <FormSection title="Traffic Shaping">
+          <FieldRow label="Shared Shaper">
+            <div className="flex items-center gap-3">
+              <Toggle checked={!!draft.trafficShaper} disabled={shaperNames.length === 0}
+                onChange={(on) => set({ trafficShaper: on ? (draft.trafficShaper || shaperNames[0] || '') : '' })} />
+              {!!draft.trafficShaper && (
+                <select className="forti-select max-w-[300px]" value={draft.trafficShaper} onChange={(e) => set({ trafficShaper: e.target.value })}>
+                  {shaperNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              )}
+            </div>
+          </FieldRow>
+          <FieldRow label="Reverse Shaper">
+            <div className="flex items-center gap-3">
+              <Toggle checked={!!draft.trafficShaperReverse} disabled={shaperNames.length === 0}
+                onChange={(on) => set({ trafficShaperReverse: on ? (draft.trafficShaperReverse || shaperNames[0] || '') : '' })} />
+              {!!draft.trafficShaperReverse && (
+                <select className="forti-select max-w-[300px]" value={draft.trafficShaperReverse} onChange={(e) => set({ trafficShaperReverse: e.target.value })}>
+                  {shaperNames.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              )}
+            </div>
           </FieldRow>
         </FormSection>
 
