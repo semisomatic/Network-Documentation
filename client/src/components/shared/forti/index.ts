@@ -5,5 +5,7 @@ export { default as CheckboxGrid } from './CheckboxGrid';
 export type { CheckboxOption } from './CheckboxGrid';
 export { default as InlineTable } from './InlineTable';
 export type { InlineColumn } from './InlineTable';
+export { default as ObjectSelect } from './ObjectSelect';
+export type { ObjectOption } from './ObjectSelect';
 export { default as EditorPage } from './EditorPage';
 export { Card, FormSection, FieldRow, InfoDot } from './FormLayout';

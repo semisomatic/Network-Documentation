@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import DataTable, { Column } from '../shared/DataTable';
-import EditModal, { FieldDef } from '../shared/EditModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import StatusBadge from '../shared/StatusBadge';
+import PolicyEditor from './PolicyEditor';
 import { useProjectStore } from '../../store/projectStore';
 import type { FirewallPolicy as FWPolicy } from '../../types/fortigate';
 
@@ -22,139 +22,82 @@ const defaultPolicy: FWPolicy = {
   diffservReverse: false, diffservcodeForward: '', diffservcodeReverse: '',
 };
 
+// Small colored UTM badge (AV / WEB / IPS / SSL ...)
+const utmBadge = (label: string, name: string, cls: string) => (
+  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-white ${cls}`}>
+    <span className="font-semibold">{label}</span><span>{name}</span>
+  </span>
+);
+
+const renderUTM = (p: FWPolicy) => {
+  const chips: React.ReactNode[] = [];
+  if (p.avProfile) chips.push(utmBadge('AV', p.avProfile, 'bg-orange-500'));
+  if (p.webfilterProfile) chips.push(utmBadge('WEB', p.webfilterProfile, 'bg-sky-500'));
+  if (p.dnsfilterProfile) chips.push(utmBadge('DNS', p.dnsfilterProfile, 'bg-teal-500'));
+  if (p.applicationList) chips.push(utmBadge('APP', p.applicationList, 'bg-indigo-500'));
+  if (p.ipsSensor) chips.push(utmBadge('IPS', p.ipsSensor, 'bg-lime-600'));
+  if (p.sslSshProfile) chips.push(utmBadge('SSL', p.sslSshProfile, 'bg-amber-600'));
+  if (!chips.length) return <span className="text-gray-400">-</span>;
+  return <div className="flex flex-col gap-0.5 items-start">{chips.map((c, i) => <span key={i}>{c}</span>)}</div>;
+};
+
 export default function FirewallPolicy() {
   const config = useProjectStore((s) => s.project.config);
   const highlights = useProjectStore((s) => s.project.highlights[PATH] || {});
   const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.firewallPolicy;
 
-  const [editing, setEditing] = useState<{ item: FWPolicy; index: number } | null>(null);
-  const [isNew, setIsNew] = useState(false);
+  const [editorState, setEditorState] = useState<{ item: FWPolicy; index: number; isNew: boolean } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
-  const intfOptions = [
-    ...config.system.interfaces.map(i => ({ value: i.name, label: i.name })),
-    ...config.system.zones.map(z => ({ value: z.name, label: `[Zone] ${z.name}` })),
-    ...(config.sdwan?.zones || []).map(z => ({ value: z.name, label: `[SD-WAN] ${z.name}` })),
-  ];
-  const addrOptions = [
-    { value: 'all', label: 'all' },
-    ...config.firewallAddress.map(a => ({ value: a.name, label: a.name })),
-    ...config.firewallAddrgrp.map(g => ({ value: g.name, label: `[G] ${g.name}` })),
-  ];
-  const dstAddrOptions = [
-    { value: 'all', label: 'all' },
-    ...config.firewallAddress.map(a => ({ value: a.name, label: a.name })),
-    ...config.firewallAddrgrp.map(g => ({ value: g.name, label: `[G] ${g.name}` })),
-    ...config.firewallVip.map(v => ({ value: v.name, label: `[VIP] ${v.name}` })),
-  ];
-  const svcOptions = [
-    { value: 'ALL', label: 'ALL' },
-    ...config.firewallService.map(s => ({ value: s.name, label: s.name })),
-    ...config.firewallServiceGroup.map(g => ({ value: g.name, label: `[G] ${g.name}` })),
-  ];
-  const schedOptions = [
-    { value: 'always', label: 'always' },
-    ...config.firewallSchedule.map(s => ({ value: s.name, label: s.name })),
-  ];
-  const secProfiles = (arr: any[], label: string) => arr.map(p => ({ value: p.name, label: `${label}: ${p.name}` }));
-
-  const fields: FieldDef[] = [
-    { key: 'policyid', label: 'Policy ID', type: 'number', required: true, group: 'General' },
-    { key: 'name', label: 'Name', type: 'text', required: true, group: 'General' },
-    { key: 'status', label: 'Status', type: 'select', group: 'General', options: [
-      { value: 'enable', label: 'Enable' }, { value: 'disable', label: 'Disable' },
-    ]},
-    { key: 'action', label: 'Action', type: 'select', group: 'General', options: [
-      { value: 'accept', label: 'ACCEPT' }, { value: 'deny', label: 'DENY' },
-    ]},
-    { key: 'srcintf', label: 'Source Interface', type: 'multiselect', group: 'Source', options: intfOptions },
-    { key: 'srcaddr', label: 'Source Address', type: 'multiselect', group: 'Source', options: addrOptions },
-    { key: 'srcaddrNegate', label: 'Negate Source', type: 'checkbox', group: 'Source' },
-    { key: 'dstintf', label: 'Destination Interface', type: 'multiselect', group: 'Destination', options: intfOptions },
-    { key: 'dstaddr', label: 'Destination Address', type: 'multiselect', group: 'Destination', options: dstAddrOptions },
-    { key: 'dstaddrNegate', label: 'Negate Destination', type: 'checkbox', group: 'Destination' },
-    { key: 'service', label: 'Service', type: 'multiselect', group: 'Service', options: svcOptions },
-    { key: 'schedule', label: 'Schedule', type: 'select', group: 'Service', options: schedOptions },
-    { key: 'nat', label: 'NAT', type: 'checkbox', group: 'NAT' },
-    { key: 'ippool', label: 'Use IP Pool', type: 'checkbox', group: 'NAT' },
-    { key: 'poolname', label: 'IP Pool', type: 'multiselect', group: 'NAT',
-      options: config.firewallIppool.map(p => ({ value: p.name, label: p.name })) },
-    { key: 'fixedport', label: 'Fixed Port', type: 'checkbox', group: 'NAT' },
-    { key: 'inspectionMode', label: 'Inspection Mode', type: 'select', group: 'Inspection', options: [
-      { value: 'flow', label: 'Flow-based' }, { value: 'proxy', label: 'Proxy-based' },
-    ]},
-    { key: 'utmStatus', label: 'Enable Security Profiles', type: 'checkbox', group: 'Security Profiles' },
-    { key: 'avProfile', label: 'Antivirus Profile', type: 'select', group: 'Security Profiles',
-      options: [{ value: '', label: 'None' }, ...config.securityProfiles.antivirus.map(p => ({ value: p.name, label: p.name }))] },
-    { key: 'webfilterProfile', label: 'Web Filter Profile', type: 'select', group: 'Security Profiles',
-      options: [{ value: '', label: 'None' }, ...config.securityProfiles.webFilter.map(p => ({ value: p.name, label: p.name }))] },
-    { key: 'ipsSensor', label: 'IPS Sensor', type: 'select', group: 'Security Profiles',
-      options: [{ value: '', label: 'None' }, ...config.securityProfiles.ips.map(p => ({ value: p.name, label: p.name }))] },
-    { key: 'applicationList', label: 'Application Control', type: 'select', group: 'Security Profiles',
-      options: [{ value: '', label: 'None' }, ...config.securityProfiles.applicationControl.map(p => ({ value: p.name, label: p.name }))] },
-    { key: 'sslSshProfile', label: 'SSL/SSH Inspection', type: 'select', group: 'Security Profiles',
-      options: [{ value: '', label: 'None' }, ...config.securityProfiles.sslInspection.map(p => ({ value: p.name, label: p.name }))] },
-    { key: 'logtraffic', label: 'Log Traffic', type: 'select', group: 'Logging', options: [
-      { value: 'all', label: 'All Sessions' }, { value: 'utm', label: 'Security Events' }, { value: 'disable', label: 'Disable' },
-    ]},
-    { key: 'logtrafficStart', label: 'Log at Session Start', type: 'checkbox', group: 'Logging' },
-    { key: 'groups', label: 'User Groups', type: 'multiselect', group: 'Authentication',
-      options: config.user.group.map(g => ({ value: g.name, label: g.name })) },
-    { key: 'users', label: 'Users', type: 'multiselect', group: 'Authentication',
-      options: config.user.local.map(u => ({ value: u.name, label: u.name })) },
-    { key: 'comments', label: 'Comments', type: 'textarea', group: 'Other', width: 'full' },
-  ];
+  const nextId = () => (data.length ? Math.max(...data.map((p) => p.policyid)) + 1 : 1);
 
   const columns: Column<FWPolicy>[] = [
-    { key: 'policyid', label: 'ID', width: '60px' },
-    { key: 'name', label: 'Name' },
-    { key: 'srcintf', label: 'Src Intf', render: (p) => p.srcintf.join(', ') },
-    { key: 'dstintf', label: 'Dst Intf', render: (p) => p.dstintf.join(', ') },
-    { key: 'srcaddr', label: 'Source', render: (p) => p.srcaddr.join(', ') },
-    { key: 'dstaddr', label: 'Destination', render: (p) => p.dstaddr.join(', ') },
-    { key: 'service', label: 'Service', render: (p) => p.service.join(', ') },
+    { key: 'policyid', label: 'ID', width: '55px' },
+    { key: 'name', label: 'Name', render: (p) => <span className={p.status === 'disable' ? 'text-gray-400' : 'font-medium'}>{p.name || `Policy ${p.policyid}`}</span> },
+    { key: 'srcintf', label: 'From', render: (p) => p.srcintf.join(', ') || 'any' },
+    { key: 'dstintf', label: 'To', render: (p) => p.dstintf.join(', ') || 'any' },
+    { key: 'srcaddr', label: 'Source', render: (p) => p.srcaddr.join(', ') || '-' },
+    { key: 'dstaddr', label: 'Destination', render: (p) => p.dstaddr.join(', ') || '-' },
+    { key: 'service', label: 'Service', render: (p) => p.service.join(', ') || '-' },
     { key: 'action', label: 'Action', render: (p) => <StatusBadge value={p.action} /> },
-    { key: 'nat', label: 'NAT', render: (p) => p.nat ? 'Yes' : '-' },
-    { key: 'status', label: 'Status', render: (p) => <StatusBadge value={p.status} /> },
+    { key: 'poolname', label: 'IP Pool', render: (p) => (p.ippool && p.poolname.length ? p.poolname.join(', ') : '-') },
+    { key: 'nat', label: 'NAT', render: (p) => p.nat ? <span className="text-forti-accent font-medium">NAT</span> : <span className="text-gray-400">Disabled</span> },
+    { key: 'utm', label: 'UTM', render: renderUTM },
   ];
 
-  const handleSave = () => {
-    if (!editing) return;
-    const item = { ...editing.item };
-    if (isNew && !item.policyid) {
-      item.policyid = data.length > 0 ? Math.max(...data.map(p => p.policyid)) + 1 : 1;
-    }
-    if (isNew) addItem(PATH, item);
-    else updateItem(PATH, editing.index, item);
-    setEditing(null);
+  const savePolicy = (item: FWPolicy) => {
+    if (!editorState) return;
+    const finalItem = { ...item };
+    if (editorState.isNew && !finalItem.policyid) finalItem.policyid = nextId();
+    if (editorState.isNew) addItem(PATH, finalItem);
+    else updateItem(PATH, editorState.index, finalItem);
+    setEditorState(null);
   };
+
+  if (editorState) {
+    return (
+      <PolicyEditor
+        initial={editorState.item}
+        isNew={editorState.isNew}
+        onSave={savePolicy}
+        onCancel={() => setEditorState(null)}
+      />
+    );
+  }
 
   return (
     <>
       <DataTable title="Firewall Policy" columns={columns} data={data}
         getRowKey={(item) => String(item.policyid)}
-        onAdd={() => {
-          const nextId = data.length > 0 ? Math.max(...data.map(p => p.policyid)) + 1 : 1;
-          setEditing({ item: { ...defaultPolicy, policyid: nextId }, index: -1 });
-          setIsNew(true);
-        }}
-        onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
+        onAdd={() => setEditorState({ item: { ...defaultPolicy, policyid: nextId() }, index: -1, isNew: true })}
+        onEdit={(item, index) => setEditorState({ item: { ...item }, index, isNew: false })}
         onDelete={(_, index) => setDeleting(index)}
-        onClone={(item) => {
-          const nextId = data.length > 0 ? Math.max(...data.map(p => p.policyid)) + 1 : 1;
-          setEditing({ item: { ...item, policyid: nextId, name: item.name + '_copy' }, index: -1 });
-          setIsNew(true);
-        }}
+        onClone={(item) => setEditorState({ item: { ...item, policyid: nextId(), name: item.name + '_copy' }, index: -1, isNew: true })}
         onReorder={(from, to) => reorderItems(PATH, from, to)}
         highlights={highlights}
         onHighlight={(key, color) => setHighlight(PATH, key, color)}
       />
-      {editing && (
-        <EditModal title="Firewall Policy" fields={fields} values={editing.item} isNew={isNew}
-          onChange={(key, val) => setEditing({ ...editing, item: { ...editing.item, [key]: val } })}
-          onSave={handleSave} onCancel={() => setEditing(null)} />
-      )}
       {deleting !== null && (
         <ConfirmDialog title="Delete Policy" message={`Delete policy #${data[deleting]?.policyid} "${data[deleting]?.name}"?`}
           onConfirm={() => { removeItem(PATH, deleting); setDeleting(null); }} onCancel={() => setDeleting(null)} />
