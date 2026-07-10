@@ -9,16 +9,19 @@ import type { WebFilterProfile } from '../../types/fortigate';
 const PATH = 'securityProfiles.webFilter';
 
 const defaultProfile: WebFilterProfile = {
-  name: '', comment: '', options: [], httpsReplacemsg: true, ovrdPerm: [],
+  name: '', comment: '', featureSet: 'flow', options: [], httpsReplacemsg: true, ovrdPerm: [],
   postAction: 'normal', webContentLog: true, webFilterActivex: 'allow',
   webFilterCookie: 'allow', webFilterJscript: 'allow', webFilterJavaApplet: 'allow',
-  webFilterUnknown: 'allow', ftgdWfCategories: [], urlFilterEntries: [],
+  webFilterUnknown: 'allow', ftgdWfCategories: [], urlFilterTable: 0,
   safeSearch: 'disable', youtubeRestrict: 'none',
 };
 
 const fields: FieldDef[] = [
   { key: 'name', label: 'Name', type: 'text', required: true, group: 'General' },
   { key: 'comment', label: 'Comment', type: 'textarea', group: 'General', width: 'full' },
+  { key: 'featureSet', label: 'Feature Set', type: 'select', group: 'General', options: [
+    { value: 'flow', label: 'Flow-based' }, { value: 'proxy', label: 'Proxy-based' },
+  ]},
   { key: 'safeSearch', label: 'Safe Search', type: 'select', group: 'Search Engines', options: [
     { value: 'url', label: 'URL' }, { value: 'header', label: 'Header' }, { value: 'disable', label: 'Disable' },
   ]},
@@ -59,6 +62,8 @@ export default function WebFilter() {
 
   const columns: Column<WebFilterProfile>[] = [
     { key: 'name', label: 'Name' },
+    { key: 'featureSet', label: 'Feature Set' },
+    { key: 'ftgdWfCategories', label: 'Category Filters', render: (p) => p.ftgdWfCategories.length ? `${p.ftgdWfCategories.length} categories` : '-' },
     { key: 'safeSearch', label: 'Safe Search', render: (p) => <StatusBadge value={p.safeSearch} /> },
     { key: 'youtubeRestrict', label: 'YouTube Restrict', render: (p) => <StatusBadge value={p.youtubeRestrict} /> },
     { key: 'postAction', label: 'POST Action', render: (p) => <StatusBadge value={p.postAction} /> },

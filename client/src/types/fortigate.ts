@@ -678,6 +678,7 @@ export interface AntivirusProfile {
 export interface WebFilterProfile {
   name: string;
   comment: string;
+  featureSet: 'proxy' | 'flow';
   options: string[];
   httpsReplacemsg: boolean;
   ovrdPerm: string[];
@@ -688,8 +689,10 @@ export interface WebFilterProfile {
   webFilterJscript: 'block' | 'allow';
   webFilterJavaApplet: 'block' | 'allow';
   webFilterUnknown: 'block' | 'allow';
+  // config ftgd-wf > config filters (FortiGuard category id + action)
   ftgdWfCategories: Array<{ id: number; action: 'allow' | 'block' | 'monitor' | 'warning' | 'authenticate' }>;
-  urlFilterEntries: Array<{ id: number; url: string; type: 'simple' | 'regex' | 'wildcard'; action: 'exempt' | 'block' | 'allow' | 'monitor' }>;
+  // config web
+  urlFilterTable: number;   // reference to a config webfilter urlfilter object (by id)
   safeSearch: 'url' | 'header' | 'disable';
   youtubeRestrict: 'none' | 'strict' | 'moderate';
 }
@@ -1198,6 +1201,10 @@ export function migrateProject(raw: any): FortigateProject {
     for (const r of project.config.sdwan?.rules || []) {
       if (r.comment === undefined) r.comment = '';
       if (r.priorityZone === undefined) r.priorityZone = '';
+    }
+    for (const w of project.config.securityProfiles?.webFilter || []) {
+      if (w.featureSet === undefined) w.featureSet = 'flow';
+      if (w.urlFilterTable === undefined) w.urlFilterTable = 0;
     }
   }
   return project as FortigateProject;

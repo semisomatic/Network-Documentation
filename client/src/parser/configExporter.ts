@@ -895,6 +895,40 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- Web Filter Profiles ---
+  if (config.securityProfiles.webFilter.length > 0) {
+    out += 'config webfilter profile\n';
+    for (const w of config.securityProfiles.webFilter) {
+      out += line(1, `edit ${q(w.name)}`);
+      out += setVal(2, 'comment', w.comment);
+      out += setVal(2, 'feature-set', w.featureSet);
+      if (w.options.length > 0) out += setArr(2, 'options', w.options);
+      if (w.postAction !== 'normal') out += setVal(2, 'post-action', w.postAction);
+      if (!w.webContentLog) out += setVal(2, 'web-content-log', 'disable');
+      if (w.urlFilterTable || w.safeSearch !== 'disable' || w.youtubeRestrict !== 'none') {
+        out += line(2, 'config web');
+        if (w.urlFilterTable) out += setVal(3, 'urlfilter-table', w.urlFilterTable);
+        if (w.safeSearch !== 'disable') out += setVal(3, 'safe-search', w.safeSearch);
+        if (w.youtubeRestrict !== 'none') out += setVal(3, 'youtube-restrict', w.youtubeRestrict);
+        out += line(2, 'end');
+      }
+      if (w.ftgdWfCategories.length > 0) {
+        out += line(2, 'config ftgd-wf');
+        out += line(3, 'config filters');
+        w.ftgdWfCategories.forEach((c, i) => {
+          out += line(4, `edit ${i + 1}`);
+          out += setVal(5, 'category', c.id);
+          if (c.action !== 'monitor') out += setVal(5, 'action', c.action);
+          out += line(4, 'next');
+        });
+        out += line(3, 'end');
+        out += line(2, 'end');
+      }
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   // --- Wireless VAPs ---
   if (config.wireless.vaps.length > 0) {
     out += 'config wireless-controller vap\n';

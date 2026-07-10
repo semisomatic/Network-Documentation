@@ -1127,6 +1127,39 @@ function mapUserGroups(section: RawSection): UserGroup[] {
   });
 }
 
+function mapWebFilter(section: RawSection): WebFilterProfile[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    // config ftgd-wf > config filters bubbles up to children['ftgd-wf']
+    const cats = (e.children['ftgd-wf'] || [])
+      .filter((f) => f.properties['category'] !== undefined)
+      .map((f) => ({
+        id: num(f.properties['category']),
+        action: str(f.properties['action'], 'monitor') as WebFilterProfile['ftgdWfCategories'][number]['action'],
+      }));
+    return {
+      name: e.name,
+      comment: str(p['comment']),
+      featureSet: str(p['feature-set'], 'flow') as WebFilterProfile['featureSet'],
+      options: strArr(p['options']),
+      httpsReplacemsg: bool(p['https-replacemsg'], true),
+      ovrdPerm: strArr(p['ovrd-perm']),
+      postAction: str(p['post-action'], 'normal') as WebFilterProfile['postAction'],
+      webContentLog: bool(p['web-content-log'], true),
+      webFilterActivex: str(p['web-filter-activex'], 'allow') as 'block' | 'allow',
+      webFilterCookie: str(p['web-filter-cookie'], 'allow') as 'block' | 'allow',
+      webFilterJscript: str(p['web-filter-jscript'], 'allow') as 'block' | 'allow',
+      webFilterJavaApplet: str(p['web-filter-java-applet'], 'allow') as 'block' | 'allow',
+      webFilterUnknown: str(p['web-filter-unknown'], 'allow') as 'block' | 'allow',
+      ftgdWfCategories: cats,
+      // config web (merged as web.<key> because it has no edit entries)
+      urlFilterTable: num(p['web.urlfilter-table']),
+      safeSearch: str(p['web.safe-search'], 'disable') as WebFilterProfile['safeSearch'],
+      youtubeRestrict: str(p['web.youtube-restrict'], 'none') as WebFilterProfile['youtubeRestrict'],
+    };
+  });
+}
+
 function mapFSSO(section: RawSection): FSSOServer[] {
   return section.entries.map((e) => {
     const p = e.properties;
@@ -1373,6 +1406,10 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const userFsso = sections.get('user fsso');
   if (userFsso) config.user.fsso = mapFSSO(userFsso);
+
+  // Security profiles
+  const webFilter = sections.get('webfilter profile');
+  if (webFilter) config.securityProfiles.webFilter = mapWebFilter(webFilter);
 
   // Wireless
   const wirelessVap = sections.get('wireless-controller vap');
