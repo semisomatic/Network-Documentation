@@ -7,5 +7,6 @@ export { default as InlineTable } from './InlineTable';
 export type { InlineColumn } from './InlineTable';
 export { default as ObjectSelect } from './ObjectSelect';
 export type { ObjectOption } from './ObjectSelect';
+export { default as StringChips } from './StringChips';
 export { default as EditorPage } from './EditorPage';
 export { Card, FormSection, FieldRow, InfoDot } from './FormLayout';

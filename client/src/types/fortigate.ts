@@ -803,6 +803,7 @@ export interface SDWANHealthCheck {
   name: string;
   server: string[];
   protocol: 'ping' | 'tcp-echo' | 'udp-echo' | 'http' | 'dns' | 'twamp';
+  probeMode: 'active' | 'passive' | 'prefer-passive';
   port: number;
   interval: number;
   failtime: number;
@@ -825,6 +826,7 @@ export interface SDWANHealthCheck {
 export interface SDWANRule {
   id: number;
   name: string;
+  comment: string;
   srcAddr: string[];
   dstAddr: string[];
   srcIntf: string[];
@@ -1182,6 +1184,12 @@ export function migrateProject(raw: any): FortigateProject {
     for (const pol of project.config.firewallPolicy || []) {
       if (pol.trafficShaper === undefined) pol.trafficShaper = '';
       if (pol.trafficShaperReverse === undefined) pol.trafficShaperReverse = '';
+    }
+    for (const hc of project.config.sdwan?.healthChecks || []) {
+      if (hc.probeMode === undefined) hc.probeMode = 'active';
+    }
+    for (const r of project.config.sdwan?.rules || []) {
+      if (r.comment === undefined) r.comment = '';
     }
   }
   return project as FortigateProject;

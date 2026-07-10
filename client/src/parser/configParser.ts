@@ -1208,6 +1208,7 @@ function mapSDWAN(section: RawSection, allSections: Map<string, RawSection>): Pa
         name: entry.name,
         server: strArr(ep['server']),
         protocol: str(ep['protocol'], 'ping') as SDWANHealthCheck['protocol'],
+        probeMode: str(ep['probe-mode'], 'active') as SDWANHealthCheck['probeMode'],
         port: num(ep['port']),
         interval: num(ep['interval'], 500),
         failtime: num(ep['failtime'], 5),
@@ -1219,7 +1220,12 @@ function mapSDWAN(section: RawSection, allSections: Map<string, RawSection>): Pa
         thresholdAlertLatency: num(ep['threshold-alert-latency']),
         thresholdAlertPacketloss: num(ep['threshold-alert-packetloss']),
         members: strArr(ep['members']).map((s) => parseInt(s, 10) || 0),
-        slaTargets: [],
+        slaTargets: (entry.children['sla'] || []).map((s) => ({
+          id: parseInt(s.name, 10) || 1,
+          latencyThreshold: num(s.properties['latency-threshold']),
+          jitterThreshold: num(s.properties['jitter-threshold']),
+          packetlossThreshold: num(s.properties['packetloss-threshold']),
+        })),
       });
     }
   }
@@ -1232,6 +1238,7 @@ function mapSDWAN(section: RawSection, allSections: Map<string, RawSection>): Pa
       result.rules!.push({
         id: parseInt(entry.name, 10) || 0,
         name: str(ep['name']),
+        comment: str(ep['comments']) || str(ep['comment']),
         srcAddr: strArr(ep['src']),
         dstAddr: strArr(ep['dst']),
         srcIntf: strArr(ep['input-device']),
