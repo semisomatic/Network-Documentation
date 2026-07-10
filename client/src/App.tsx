@@ -35,6 +35,7 @@ import LDAPServers from './components/user/LDAPServers';
 import RADIUSServers from './components/user/RADIUSServers';
 import LocalUsers from './components/user/LocalUsers';
 import UserGroups from './components/user/UserGroups';
+import FSSO from './components/user/FSSO';
 
 const sectionMap: Record<string, React.ComponentType> = {
   'system-settings': SystemSettings,
@@ -70,6 +71,7 @@ const sectionMap: Record<string, React.ComponentType> = {
   'user-radius': RADIUSServers,
   'user-local': LocalUsers,
   'user-groups': UserGroups,
+  'user-fsso': FSSO,
 };
 
 export default function App() {

@@ -71,6 +71,7 @@ export interface FortigateConfig {
     radius: RADIUSServer[];
     local: LocalUser[];
     group: UserGroup[];
+    fsso: FSSOServer[];
   };
   wireless: WirelessConfig;
 }
@@ -939,6 +940,20 @@ export interface UserGroup {
   }>;
 }
 
+// --- FSSO (Fortinet Single Sign-On) ---
+export interface FSSOServer {
+  name: string;
+  type: string;              // default (collector-agent poll) | ldap | etc.
+  server: string;            // primary collector agent IP/FQDN
+  server2: string;
+  server3: string;
+  port: number;
+  password: string;
+  ldapServer: string;        // linked LDAP server for group lookup
+  groupPollInterval: number; // minutes
+  sourceIp: string;
+}
+
 // --- FortiAP / Wireless ---
 export interface WirelessVAP {
   name: string;
@@ -1114,6 +1129,7 @@ export function createDefaultConfig(): FortigateConfig {
       radius: [],
       local: [],
       group: [],
+      fsso: [],
     },
     wireless: {
       vaps: [],
@@ -1160,6 +1176,7 @@ export function migrateProject(raw: any): FortigateProject {
     if (!project.config.system.snmp) project.config.system.snmp = defaults.system.snmp;
     if (!project.config.system.centralManagement) project.config.system.centralManagement = defaults.system.centralManagement;
     if (!project.config.logging) project.config.logging = defaults.logging;
+    if (!project.config.user.fsso) project.config.user.fsso = [];
   }
   return project as FortigateProject;
 }

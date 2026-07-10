@@ -20,7 +20,7 @@ import {
   AppControlProfile, IPSProfile, SSLInspectionProfile,
   SDWANConfig, SDWANMember, SDWANHealthCheck, SDWANRule, SDWANZone,
   TrafficShaper, TrafficShapingPolicy,
-  LDAPServer, RADIUSServer, LocalUser, UserGroup,
+  LDAPServer, RADIUSServer, LocalUser, UserGroup, FSSOServer,
 } from '../types/fortigate';
 
 // --- Raw parsed tree types ---
@@ -1119,6 +1119,24 @@ function mapUserGroups(section: RawSection): UserGroup[] {
   });
 }
 
+function mapFSSO(section: RawSection): FSSOServer[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    return {
+      name: e.name,
+      type: str(p['type'], 'default'),
+      server: str(p['server']),
+      server2: str(p['server2']),
+      server3: str(p['server3']),
+      port: num(p['port'], 8000),
+      password: str(p['password']),
+      ldapServer: str(p['ldap-server']),
+      groupPollInterval: num(p['group-poll-interval']),
+      sourceIp: str(p['source-ip']),
+    };
+  });
+}
+
 // --- Main export ---
 // --- SD-WAN mapper ---
 function mapSDWAN(section: RawSection, allSections: Map<string, RawSection>): Partial<SDWANConfig> {
@@ -1356,6 +1374,9 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const userGroup = sections.get('user group');
   if (userGroup) config.user.group = mapUserGroups(userGroup);
+
+  const userFsso = sections.get('user fsso');
+  if (userFsso) config.user.fsso = mapFSSO(userFsso);
 
   // Wireless
   const wirelessVap = sections.get('wireless-controller vap');

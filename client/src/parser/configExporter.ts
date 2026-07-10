@@ -737,6 +737,25 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- User FSSO ---
+  if (config.user.fsso.length > 0) {
+    out += 'config user fsso\n';
+    for (const f of config.user.fsso) {
+      out += line(1, `edit ${q(f.name)}`);
+      if (f.type && f.type !== 'default') out += setVal(2, 'type', f.type);
+      out += setVal(2, 'server', f.server);
+      if (f.server2) out += setVal(2, 'server2', f.server2);
+      if (f.server3) out += setVal(2, 'server3', f.server3);
+      if (f.port !== 8000) out += setVal(2, 'port', f.port);
+      if (f.password) out += setVal(2, 'password', f.password);
+      if (f.ldapServer) out += setVal(2, 'ldap-server', f.ldapServer);
+      if (f.groupPollInterval) out += setVal(2, 'group-poll-interval', f.groupPollInterval);
+      if (f.sourceIp) out += setVal(2, 'source-ip', f.sourceIp);
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   // --- User Groups ---
   if (config.user.group.length > 0) {
     out += 'config user group\n';

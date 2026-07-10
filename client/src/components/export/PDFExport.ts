@@ -168,6 +168,7 @@ export async function generatePDF(project: FortigateProject) {
   if (c.user.radius.length) sections.push('RADIUS Servers');
   if (c.user.local.length) sections.push('Local Users');
   if (c.user.group.length) sections.push('User Groups');
+  if (c.user.fsso.length) sections.push('FSSO Servers');
   // --- Moved sections (before signature) ---
   if (c.firewallPolicy.length) sections.push('Firewall Policies');
   if (c.firewallAddress.length) sections.push('Firewall Addresses');
@@ -512,6 +513,15 @@ export async function generatePDF(project: FortigateProject) {
     y = addTable(doc,
       ['Name', 'Type', 'Members'],
       c.user.group.map(g => [g.name, g.groupType, g.member.join(', ')]),
+      y,
+    );
+  }
+
+  if (c.user.fsso.length) {
+    y = addSection(doc, 'FSSO Servers', y, tocEntries);
+    y = addTable(doc,
+      ['Name', 'Primary Server', 'Secondary', 'Port', 'LDAP Server', 'Poll Interval'],
+      c.user.fsso.map(f => [f.name, f.server, f.server2, String(f.port), f.ldapServer, f.groupPollInterval ? `${f.groupPollInterval} min` : '']),
       y,
     );
   }

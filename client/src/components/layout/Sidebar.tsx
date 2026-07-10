@@ -101,6 +101,7 @@ const navStructure: NavItem[] = [
       { id: 'user-radius', label: 'RADIUS Servers', icon: Server },
       { id: 'user-local', label: 'Local Users', icon: Users },
       { id: 'user-groups', label: 'User Groups', icon: Users },
+      { id: 'user-fsso', label: 'FSSO', icon: Server },
     ],
   },
 ];
