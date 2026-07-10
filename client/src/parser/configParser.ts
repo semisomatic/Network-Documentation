@@ -900,12 +900,14 @@ function mapServiceGroups(section: RawSection): FirewallServiceGroup[] {
   }));
 }
 
-function mapSchedules(section: RawSection): FirewallSchedule[] {
+function mapSchedules(section: RawSection, schedType: FirewallSchedule['type']): FirewallSchedule[] {
   return section.entries.map((e) => {
     const p = e.properties;
+    // Schedules carry no "type" field; it's implied by the section. The built-in
+    // "always" schedule is the exception.
     return {
       name: e.name,
-      type: str(p['type'] || p['schedule-type'], 'always') as FirewallSchedule['type'],
+      type: e.name === 'always' ? 'always' : schedType,
       start: str(p['start']),
       end: str(p['end']),
       day: strArr(p['day']),
@@ -1329,9 +1331,9 @@ export function parseFortiConfig(text: string): FortigateConfig {
   if (fwSvcGrp) config.firewallServiceGroup = mapServiceGroups(fwSvcGrp);
 
   const fwSched = sections.get('firewall schedule recurring');
-  if (fwSched) config.firewallSchedule = mapSchedules(fwSched);
+  if (fwSched) config.firewallSchedule = mapSchedules(fwSched, 'recurring');
   const fwSchedOnetime = sections.get('firewall schedule onetime');
-  if (fwSchedOnetime) config.firewallSchedule.push(...mapSchedules(fwSchedOnetime));
+  if (fwSchedOnetime) config.firewallSchedule.push(...mapSchedules(fwSchedOnetime, 'onetime'));
 
   const fwVip = sections.get('firewall vip');
   if (fwVip) config.firewallVip = mapVIPs(fwVip);

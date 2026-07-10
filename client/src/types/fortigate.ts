@@ -445,7 +445,7 @@ export interface FirewallPolicy {
 // --- Firewall Address ---
 export interface FirewallAddress {
   name: string;
-  type: 'ipmask' | 'iprange' | 'fqdn' | 'geography' | 'wildcard' | 'dynamic' | 'mac';
+  type: 'ipmask' | 'iprange' | 'fqdn' | 'geography' | 'wildcard' | 'dynamic' | 'mac' | 'interface-subnet';
   subnet: string;
   startIp: string;
   endIp: string;

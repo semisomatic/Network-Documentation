@@ -185,7 +185,7 @@ export function exportFortiConfig(config: FortigateConfig): string {
       if (iface.ip && iface.netmask) out += line(2, `set ip ${iface.ip} ${iface.netmask}`);
       if (iface.allowaccess.length > 0) out += setArr(2, 'allowaccess', iface.allowaccess);
       out += setVal(2, 'type', iface.type);
-      if (iface.type === 'vlan' && iface.vlanid) out += setVal(2, 'vlanid', iface.vlanid);
+      if (iface.vlanid) out += setVal(2, 'vlanid', iface.vlanid);
       if (iface.interface) out += setVal(2, 'interface', iface.interface);
       out += setVal(2, 'alias', iface.alias);
       if (iface.status === 'down') out += setVal(2, 'status', 'down');
@@ -195,6 +195,7 @@ export function exportFortiConfig(config: FortigateConfig): string {
         out += setVal(2, 'mtu', iface.mtu);
       }
       if (iface.role !== 'undefined') out += setVal(2, 'role', iface.role);
+      if (iface.deviceIdentification) out += setVal(2, 'device-identification', 'enable');
       out += setVal(2, 'description', iface.description);
       if (iface.mode !== 'static') out += setVal(2, 'mode', iface.mode);
       if (iface.dhcpRelayService) {
@@ -231,6 +232,7 @@ export function exportFortiConfig(config: FortigateConfig): string {
       out += setVal(2, 'lease-time', srv.leaseTime);
       out += setVal(2, 'dns-server1', srv.dnsServer1);
       out += setVal(2, 'dns-server2', srv.dnsServer2);
+      out += setVal(2, 'dns-server3', srv.dnsServer3);
       out += setVal(2, 'domain', srv.domain);
       out += setVal(2, 'description', srv.comments);
       if (srv.ipRanges.length > 0) {
@@ -295,7 +297,9 @@ export function exportFortiConfig(config: FortigateConfig): string {
         out += setVal(2, 'dst', r.dst);
       }
       out += setVal(2, 'gateway', r.gateway);
-      out += setVal(2, 'device', r.device);
+      if (r.sdwan) out += setVal(2, 'sdwan', 'enable');
+      if (r.sdwanZone) out += setVal(2, 'sdwan-zone', r.sdwanZone);
+      else out += setVal(2, 'device', r.device);
       if (r.distance !== 10) out += setVal(2, 'distance', r.distance);
       if (r.priority !== 1) out += setVal(2, 'priority', r.priority);
       out += setVal(2, 'comment', r.comment);
@@ -554,6 +558,11 @@ export function exportFortiConfig(config: FortigateConfig): string {
       out += line(1, `edit ${q(a.name)}`);
       if (a.type !== 'ipmask') out += setVal(2, 'type', a.type);
       if (a.type === 'ipmask' && a.subnet) out += setVal(2, 'subnet', a.subnet);
+      if (a.type === 'interface-subnet') {
+        if (a.subnet) out += setVal(2, 'subnet', a.subnet);
+        if (a.interface) out += setVal(2, 'interface', a.interface);
+      }
+      if (a.type === 'mac' && a.macaddr.length) out += line(2, `set macaddr ${a.macaddr.map(q).join(' ')}`);
       if (a.type === 'fqdn' && a.fqdn) out += setVal(2, 'fqdn', a.fqdn);
       if (a.type === 'iprange') {
         out += setVal(2, 'start-ip', a.startIp);
@@ -594,10 +603,16 @@ export function exportFortiConfig(config: FortigateConfig): string {
       out += line(1, `edit ${q(s.name)}`);
       out += setVal(2, 'category', s.category);
       if (s.protocol !== 'TCP/UDP/SCTP') out += setVal(2, 'protocol', s.protocol);
-      out += setVal(2, 'tcp-portrange', s.tcpPortrange);
-      out += setVal(2, 'udp-portrange', s.udpPortrange);
+      // Direct lines so a literal "0" portrange isn't dropped by setVal's zero-skip
+      if (s.tcpPortrange) out += line(2, `set tcp-portrange ${s.tcpPortrange}`);
+      if (s.udpPortrange) out += line(2, `set udp-portrange ${s.udpPortrange}`);
       if (s.sctpPortrange) out += setVal(2, 'sctp-portrange', s.sctpPortrange);
       if (s.protocol === 'IP') out += setVal(2, 'protocol-number', s.protocolNumber);
+      if (s.protocol === 'ICMP' || s.protocol === 'ICMP6') {
+        if (s.icmptype) out += setVal(2, 'icmptype', s.icmptype);
+        if (s.icmpcode) out += setVal(2, 'icmpcode', s.icmpcode);
+      }
+      if (s.proxy) out += setVal(2, 'proxy', 'enable');
       out += setVal(2, 'comment', s.comment);
       if (s.color) out += setVal(2, 'color', s.color);
       out += line(1, 'next');
@@ -619,18 +634,18 @@ export function exportFortiConfig(config: FortigateConfig): string {
 
   // --- Firewall Schedules ---
   if (config.firewallSchedule.length > 0) {
-    // Separate recurring and onetime
-    const recurring = config.firewallSchedule.filter(s => s.type === 'recurring');
+    // "always" (built-in) and recurring schedules both live in the recurring section
+    const recurring = config.firewallSchedule.filter(s => s.type === 'recurring' || s.type === 'always');
     const onetime = config.firewallSchedule.filter(s => s.type === 'onetime');
-    const always = config.firewallSchedule.filter(s => s.type === 'always');
 
     if (recurring.length > 0) {
       out += 'config firewall schedule recurring\n';
       for (const s of recurring) {
         out += line(1, `edit ${q(s.name)}`);
-        out += setArr(2, 'day', s.day);
+        if (s.day.length > 0) out += setArr(2, 'day', s.day);
         out += setVal(2, 'start', s.start);
         out += setVal(2, 'end', s.end);
+        if (s.color) out += setVal(2, 'color', s.color);
         out += line(1, 'next');
       }
       out += 'end\n\n';
@@ -642,6 +657,7 @@ export function exportFortiConfig(config: FortigateConfig): string {
         out += line(1, `edit ${q(s.name)}`);
         out += setVal(2, 'start', s.start);
         out += setVal(2, 'end', s.end);
+        if (s.color) out += setVal(2, 'color', s.color);
         out += line(1, 'next');
       }
       out += 'end\n\n';
@@ -664,6 +680,9 @@ export function exportFortiConfig(config: FortigateConfig): string {
       }
       out += setVal(2, 'comment', v.comment);
       if (v.type !== 'static-nat') out += setVal(2, 'type', v.type);
+      if (v.color) out += setVal(2, 'color', v.color);
+      if (v.srcFilter.length > 0) out += setArr(2, 'src-filter', v.srcFilter);
+      if (v.srcintfFilter.length > 0) out += setArr(2, 'srcintf-filter', v.srcintfFilter);
       out += line(1, 'next');
     }
     out += 'end\n\n';
@@ -680,6 +699,7 @@ export function exportFortiConfig(config: FortigateConfig): string {
       if (p.sourceStartip) out += setVal(2, 'source-startip', p.sourceStartip);
       if (p.sourceEndip) out += setVal(2, 'source-endip', p.sourceEndip);
       out += setVal(2, 'arp-intf', p.arpIntf);
+      if (!p.arpReply) out += setVal(2, 'arp-reply', 'disable');
       out += setVal(2, 'comments', p.comments);
       out += line(1, 'next');
     }
@@ -722,6 +742,9 @@ export function exportFortiConfig(config: FortigateConfig): string {
       out += setArr(2, 'dhgrp', p2.dhgrp);
       out += setEnDis(2, 'auto-negotiate', p2.autoNegotiate, 'enable');
       out += setVal(2, 'keylifeseconds', p2.keylifeseconds);
+      if (p2.keylifekbs) out += setVal(2, 'keylifekbs', p2.keylifekbs);
+      if (p2.srcAddrType && p2.srcAddrType !== 'subnet') out += setVal(2, 'src-addr-type', p2.srcAddrType);
+      if (p2.dstAddrType && p2.dstAddrType !== 'subnet') out += setVal(2, 'dst-addr-type', p2.dstAddrType);
       if (p2.srcSubnet) out += setVal(2, 'src-subnet', p2.srcSubnet);
       if (p2.dstSubnet) out += setVal(2, 'dst-subnet', p2.dstSubnet);
       if (p2.srcName) out += setVal(2, 'src-name', p2.srcName);
@@ -741,6 +764,8 @@ export function exportFortiConfig(config: FortigateConfig): string {
       out += setVal(2, 'maximum-bandwidth', s.maximumBandwidth);
       out += setVal(2, 'bandwidth-unit', s.bandwidthUnit);
       out += setVal(2, 'priority', s.priority);
+      if (s.perPolicy) out += setVal(2, 'per-policy', 'enable');
+      if (s.diffserv) { out += setVal(2, 'diffserv', 'enable'); out += setVal(2, 'diffservcode', s.diffservcode); }
       out += line(1, 'next');
     }
     out += 'end\n\n';
@@ -776,11 +801,14 @@ export function exportFortiConfig(config: FortigateConfig): string {
         out += setVal(2, 'dnsfilter-profile', pol.dnsfilterProfile);
         out += setVal(2, 'ips-sensor', pol.ipsSensor);
         out += setVal(2, 'application-list', pol.applicationList);
-        out += setVal(2, 'ssl-ssh-profile', pol.sslSshProfile);
       }
+      // ssl-ssh-profile applies independently of utm-status
+      out += setVal(2, 'ssl-ssh-profile', pol.sslSshProfile);
       out += setArr(2, 'groups', pol.groups);
       out += setArr(2, 'users', pol.users);
       if (pol.inspectionMode !== 'flow') out += setVal(2, 'inspection-mode', pol.inspectionMode);
+      if (pol.tcpMssSender) out += setVal(2, 'tcp-mss-sender', pol.tcpMssSender);
+      if (pol.tcpMssReceiver) out += setVal(2, 'tcp-mss-receiver', pol.tcpMssReceiver);
       if (pol.trafficShaper) out += setVal(2, 'traffic-shaper', pol.trafficShaper);
       if (pol.trafficShaperReverse) out += setVal(2, 'traffic-shaper-reverse', pol.trafficShaperReverse);
       out += line(1, 'next');
