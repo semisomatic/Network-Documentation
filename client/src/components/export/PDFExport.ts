@@ -391,8 +391,14 @@ export async function generatePDF(project: FortigateProject) {
   if (c.securityProfiles.antivirus.length) {
     y = addSection(doc, 'Antivirus Profiles', y, tocEntries);
     y = addTable(doc,
-      ['Name', 'Scan Mode', 'HTTP', 'FTP', 'SMTP', 'Comment'],
-      c.securityProfiles.antivirus.map(a => [a.name, a.scanMode, a.httpAction, a.ftpAction, a.smtpAction, a.comment]),
+      ['Name', 'Feature Set', 'Action', 'Inspected Protocols', 'Outbreak Prev.', 'Comment'],
+      c.securityProfiles.antivirus.map(a => {
+        const protos = [
+          a.inspectHttp && 'HTTP', a.inspectSmtp && 'SMTP', a.inspectPop3 && 'POP3', a.inspectImap && 'IMAP',
+          a.inspectFtp && 'FTP', a.inspectCifs && 'CIFS', a.inspectMapi && 'MAPI', a.inspectNntp && 'NNTP', a.inspectSsh && 'SSH',
+        ].filter(Boolean).join(', ');
+        return [a.name, a.featureSet, a.scanAction, protos, a.outbreakPrevention ? 'Yes' : 'No', a.comment];
+      }),
       y,
     );
   }

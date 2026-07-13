@@ -1127,6 +1127,41 @@ function mapUserGroups(section: RawSection): UserGroup[] {
   });
 }
 
+function mapAntivirus(section: RawSection): AntivirusProfile[] {
+  const protos = ['http', 'ftp', 'imap', 'pop3', 'smtp', 'mapi', 'nntp', 'cifs', 'ssh'];
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const scan = (n: string) => str(p[`${n}.av-scan`], 'disable');
+    const firstAction = protos.map(scan).find((v) => v === 'block' || v === 'monitor');
+    const anyOutbreak = protos.some((n) => {
+      const v = str(p[`${n}.outbreak-prevention`]);
+      return v === 'block' || v === 'monitor';
+    });
+    return {
+      name: e.name,
+      comment: str(p['comment']),
+      featureSet: str(p['feature-set'], 'flow') as AntivirusProfile['featureSet'],
+      scanAction: (firstAction || 'block') as 'block' | 'monitor',
+      inspectHttp: scan('http') !== 'disable',
+      inspectFtp: scan('ftp') !== 'disable',
+      inspectImap: scan('imap') !== 'disable',
+      inspectPop3: scan('pop3') !== 'disable',
+      inspectSmtp: scan('smtp') !== 'disable',
+      inspectMapi: scan('mapi') !== 'disable',
+      inspectNntp: scan('nntp') !== 'disable',
+      inspectCifs: scan('cifs') !== 'disable',
+      inspectSsh: scan('ssh') !== 'disable',
+      treatExeAsVirus: str(p['imap.executables']) === 'virus' || str(p['pop3.executables']) === 'virus' || str(p['smtp.executables']) === 'virus',
+      outbreakPrevention: anyOutbreak,
+      outbreakPreventionArchiveScan: bool(p['outbreak-prevention-archive-scan'], true),
+      externalBlocklistAll: bool(p['external-blocklist-enable-all']),
+      emsThreatFeed: bool(p['ems-threat-feed']),
+      mobileMalware: bool(p['mobile-malware-db']),
+      scanMode: str(p['scan-mode'], 'default') as AntivirusProfile['scanMode'],
+    };
+  });
+}
+
 // config webfilter urlfilter -> Map<id, entries>
 function mapUrlFilters(section: RawSection | undefined): Map<number, WebFilterProfile['urlFilterEntries']> {
   const map = new Map<number, WebFilterProfile['urlFilterEntries']>();
@@ -1478,6 +1513,9 @@ export function parseFortiConfig(text: string): FortigateConfig {
   if (userFsso) config.user.fsso = mapFSSO(userFsso);
 
   // Security profiles
+  const antivirus = sections.get('antivirus profile');
+  if (antivirus) config.securityProfiles.antivirus = mapAntivirus(antivirus);
+
   const ftgdLocalCat = sections.get('webfilter ftgd-local-cat');
   if (ftgdLocalCat) config.securityProfiles.ftgdLocalCategories = mapFtgdLocalCat(ftgdLocalCat);
 

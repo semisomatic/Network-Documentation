@@ -660,20 +660,25 @@ export interface SSLVPNPortal {
 export interface AntivirusProfile {
   name: string;
   comment: string;
-  httpAction: 'block' | 'monitor';
-  ftpAction: 'block' | 'monitor';
-  imapAction: 'block' | 'monitor';
-  pop3Action: 'block' | 'monitor';
-  smtpAction: 'block' | 'monitor';
-  nntp: 'block' | 'monitor';
-  mapi: 'block' | 'monitor';
-  ssh: 'block' | 'monitor';
-  scanMode: 'quick' | 'full' | 'legacy';
-  ftgdAnalytics: 'disable' | 'suspicious' | 'everything';
-  analytics_max_upload: number;
-  emThreatFeed: boolean;
-  outbreakPrevention: 'disable' | 'files' | 'full-archive';
-  contentDisarm: boolean;
+  featureSet: 'proxy' | 'flow';
+  scanAction: 'block' | 'monitor';
+  // Inspected protocols (config <proto> / set av-scan). mapi & ssh are proxy-only.
+  inspectHttp: boolean;
+  inspectFtp: boolean;
+  inspectImap: boolean;
+  inspectPop3: boolean;
+  inspectSmtp: boolean;
+  inspectMapi: boolean;
+  inspectNntp: boolean;
+  inspectCifs: boolean;
+  inspectSsh: boolean;
+  treatExeAsVirus: boolean;        // set executables virus (imap/pop3/smtp)
+  outbreakPrevention: boolean;     // per-protocol outbreak-prevention (FortiGuard db)
+  outbreakPreventionArchiveScan: boolean;
+  externalBlocklistAll: boolean;   // external malware block list
+  emsThreatFeed: boolean;          // EMS external feed
+  mobileMalware: boolean;
+  scanMode: 'default' | 'legacy';
 }
 
 export interface WebFilterProfile {

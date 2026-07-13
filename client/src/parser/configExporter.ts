@@ -895,6 +895,40 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- Antivirus Profiles ---
+  if (config.securityProfiles.antivirus.length > 0) {
+    out += 'config antivirus profile\n';
+    for (const a of config.securityProfiles.antivirus) {
+      out += line(1, `edit ${q(a.name)}`);
+      out += setVal(2, 'comment', a.comment);
+      out += setVal(2, 'feature-set', a.featureSet);
+      const proto = (name: string, enabled: boolean, exe: boolean) => {
+        if (!enabled) return;
+        out += line(2, `config ${name}`);
+        out += setVal(3, 'av-scan', a.scanAction);
+        if (a.outbreakPrevention) out += setVal(3, 'outbreak-prevention', 'block');
+        if (exe && a.treatExeAsVirus) out += setVal(3, 'executables', 'virus');
+        out += line(2, 'end');
+      };
+      proto('http', a.inspectHttp, false);
+      proto('ftp', a.inspectFtp, false);
+      proto('imap', a.inspectImap, true);
+      proto('pop3', a.inspectPop3, true);
+      proto('smtp', a.inspectSmtp, true);
+      proto('mapi', a.inspectMapi, false);
+      proto('nntp', a.inspectNntp, false);
+      proto('cifs', a.inspectCifs, false);
+      proto('ssh', a.inspectSsh, false);
+      if (!a.outbreakPreventionArchiveScan) out += setVal(2, 'outbreak-prevention-archive-scan', 'disable');
+      if (a.externalBlocklistAll) out += setVal(2, 'external-blocklist-enable-all', 'enable');
+      if (a.emsThreatFeed) out += setVal(2, 'ems-threat-feed', 'enable');
+      if (a.mobileMalware) out += setVal(2, 'mobile-malware-db', 'enable');
+      if (a.scanMode !== 'default') out += setVal(2, 'scan-mode', a.scanMode);
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   // --- FortiGuard local categories ---
   if (config.securityProfiles.ftgdLocalCategories.length > 0) {
     out += 'config webfilter ftgd-local-cat\n';
