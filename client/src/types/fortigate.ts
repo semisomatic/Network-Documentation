@@ -60,6 +60,7 @@ export interface FortigateConfig {
     applicationControl: AppControlProfile[];
     ips: IPSProfile[];
     sslInspection: SSLInspectionProfile[];
+    ftgdLocalCategories: FtgdLocalCategory[];
   };
   sdwan: SDWANConfig;
   trafficShaping: {
@@ -691,10 +692,19 @@ export interface WebFilterProfile {
   webFilterUnknown: 'block' | 'allow';
   // config ftgd-wf > config filters (FortiGuard category id + action)
   ftgdWfCategories: Array<{ id: number; action: 'allow' | 'block' | 'monitor' | 'warning' | 'authenticate' }>;
+  // Static URL filter — shown inline in the profile (FortiOS stores these in a
+  // separate "config webfilter urlfilter" object referenced by id; we resolve it)
+  urlFilterTable: number;
+  urlFilterEntries: Array<{ id: number; url: string; type: 'simple' | 'regex' | 'wildcard'; action: 'exempt' | 'block' | 'allow' | 'monitor'; status: boolean }>;
   // config web
-  urlFilterTable: number;   // reference to a config webfilter urlfilter object (by id)
   safeSearch: 'url' | 'header' | 'disable';
   youtubeRestrict: 'none' | 'strict' | 'moderate';
+}
+
+// Custom FortiGuard "local" web categories (config webfilter ftgd-local-cat)
+export interface FtgdLocalCategory {
+  id: number;
+  name: string;
 }
 
 export interface DNSFilterProfile {
@@ -1122,6 +1132,7 @@ export function createDefaultConfig(): FortigateConfig {
       applicationControl: [],
       ips: [],
       sslInspection: [],
+      ftgdLocalCategories: [],
     },
     sdwan: {
       status: 'disable',
@@ -1205,6 +1216,10 @@ export function migrateProject(raw: any): FortigateProject {
     for (const w of project.config.securityProfiles?.webFilter || []) {
       if (w.featureSet === undefined) w.featureSet = 'flow';
       if (w.urlFilterTable === undefined) w.urlFilterTable = 0;
+      if (w.urlFilterEntries === undefined) w.urlFilterEntries = [];
+    }
+    if (project.config.securityProfiles && !project.config.securityProfiles.ftgdLocalCategories) {
+      project.config.securityProfiles.ftgdLocalCategories = [];
     }
   }
   return project as FortigateProject;

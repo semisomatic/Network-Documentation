@@ -16,7 +16,7 @@ import {
   FirewallService, FirewallServiceGroup, FirewallSchedule,
   FirewallVIP, FirewallIPPool,
   VPNPhase1, VPNPhase2, SSLVPNSettings, SSLVPNPortal, SSLVPNAuthRule,
-  AntivirusProfile, WebFilterProfile, DNSFilterProfile,
+  AntivirusProfile, WebFilterProfile, DNSFilterProfile, FtgdLocalCategory,
   AppControlProfile, IPSProfile, SSLInspectionProfile,
   SDWANConfig, SDWANMember, SDWANHealthCheck, SDWANRule, SDWANZone,
   TrafficShaper, TrafficShapingPolicy,
@@ -1127,9 +1127,27 @@ function mapUserGroups(section: RawSection): UserGroup[] {
   });
 }
 
-function mapWebFilter(section: RawSection): WebFilterProfile[] {
+// config webfilter urlfilter -> Map<id, entries>
+function mapUrlFilters(section: RawSection | undefined): Map<number, WebFilterProfile['urlFilterEntries']> {
+  const map = new Map<number, WebFilterProfile['urlFilterEntries']>();
+  if (!section) return map;
+  for (const e of section.entries) {
+    const entries = (e.children['entries'] || []).map((c) => ({
+      id: parseInt(c.name, 10) || 0,
+      url: str(c.properties['url']),
+      type: str(c.properties['type'], 'simple') as 'simple' | 'regex' | 'wildcard',
+      action: str(c.properties['action'], 'block') as 'exempt' | 'block' | 'allow' | 'monitor',
+      status: enableDisable(c.properties['status'], 'enable') === 'enable',
+    }));
+    map.set(parseInt(e.name, 10) || 0, entries);
+  }
+  return map;
+}
+
+function mapWebFilter(section: RawSection, urlFilters: Map<number, WebFilterProfile['urlFilterEntries']>): WebFilterProfile[] {
   return section.entries.map((e) => {
     const p = e.properties;
+    const urlTable = num(p['web.urlfilter-table']);
     // config ftgd-wf > config filters bubbles up to children['ftgd-wf']
     const cats = (e.children['ftgd-wf'] || [])
       .filter((f) => f.properties['category'] !== undefined)
@@ -1153,11 +1171,19 @@ function mapWebFilter(section: RawSection): WebFilterProfile[] {
       webFilterUnknown: str(p['web-filter-unknown'], 'allow') as 'block' | 'allow',
       ftgdWfCategories: cats,
       // config web (merged as web.<key> because it has no edit entries)
-      urlFilterTable: num(p['web.urlfilter-table']),
+      urlFilterTable: urlTable,
+      urlFilterEntries: urlFilters.get(urlTable) || [],
       safeSearch: str(p['web.safe-search'], 'disable') as WebFilterProfile['safeSearch'],
       youtubeRestrict: str(p['web.youtube-restrict'], 'none') as WebFilterProfile['youtubeRestrict'],
     };
   });
+}
+
+function mapFtgdLocalCat(section: RawSection): FtgdLocalCategory[] {
+  return section.entries.map((e) => ({
+    id: num(e.properties['id']),
+    name: e.name,
+  }));
 }
 
 function mapFSSO(section: RawSection): FSSOServer[] {
@@ -1408,8 +1434,14 @@ export function parseFortiConfig(text: string): FortigateConfig {
   if (userFsso) config.user.fsso = mapFSSO(userFsso);
 
   // Security profiles
+  const ftgdLocalCat = sections.get('webfilter ftgd-local-cat');
+  if (ftgdLocalCat) config.securityProfiles.ftgdLocalCategories = mapFtgdLocalCat(ftgdLocalCat);
+
   const webFilter = sections.get('webfilter profile');
-  if (webFilter) config.securityProfiles.webFilter = mapWebFilter(webFilter);
+  if (webFilter) {
+    const urlFilters = mapUrlFilters(sections.get('webfilter urlfilter'));
+    config.securityProfiles.webFilter = mapWebFilter(webFilter, urlFilters);
+  }
 
   // Wireless
   const wirelessVap = sections.get('wireless-controller vap');

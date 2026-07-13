@@ -895,6 +895,46 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- FortiGuard local categories ---
+  if (config.securityProfiles.ftgdLocalCategories.length > 0) {
+    out += 'config webfilter ftgd-local-cat\n';
+    for (const c of config.securityProfiles.ftgdLocalCategories) {
+      out += line(1, `edit ${q(c.name)}`);
+      out += setVal(2, 'id', c.id);
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
+  // --- Web Filter URL filter objects (referenced by profiles) ---
+  {
+    const tables = config.securityProfiles.webFilter
+      .filter((w) => w.urlFilterEntries.length > 0 && w.urlFilterTable)
+      .map((w) => ({ id: w.urlFilterTable, name: `${w.name}-urls`, entries: w.urlFilterEntries }));
+    // de-dupe shared tables by id
+    const seen = new Set<number>();
+    const uniq = tables.filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
+    if (uniq.length > 0) {
+      out += 'config webfilter urlfilter\n';
+      for (const t of uniq) {
+        out += line(1, `edit ${t.id}`);
+        out += setVal(2, 'name', t.name);
+        out += line(2, 'config entries');
+        t.entries.forEach((en, i) => {
+          out += line(3, `edit ${en.id || i + 1}`);
+          out += setVal(4, 'url', en.url);
+          out += setVal(4, 'type', en.type);
+          if (en.action !== 'block') out += setVal(4, 'action', en.action);
+          if (!en.status) out += setVal(4, 'status', 'disable');
+          out += line(3, 'next');
+        });
+        out += line(2, 'end');
+        out += line(1, 'next');
+      }
+      out += 'end\n\n';
+    }
+  }
+
   // --- Web Filter Profiles ---
   if (config.securityProfiles.webFilter.length > 0) {
     out += 'config webfilter profile\n';

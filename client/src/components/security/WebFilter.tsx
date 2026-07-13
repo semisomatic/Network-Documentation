@@ -12,7 +12,7 @@ const defaultProfile: WebFilterProfile = {
   name: '', comment: '', featureSet: 'flow', options: [], httpsReplacemsg: true, ovrdPerm: [],
   postAction: 'normal', webContentLog: true, webFilterActivex: 'allow',
   webFilterCookie: 'allow', webFilterJscript: 'allow', webFilterJavaApplet: 'allow',
-  webFilterUnknown: 'allow', ftgdWfCategories: [], urlFilterTable: 0,
+  webFilterUnknown: 'allow', ftgdWfCategories: [], urlFilterTable: 0, urlFilterEntries: [],
   safeSearch: 'disable', youtubeRestrict: 'none',
 };
 
