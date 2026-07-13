@@ -969,6 +969,69 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- DNS Filter domain-filter objects (referenced by profiles) ---
+  {
+    const tables = config.securityProfiles.dnsFilter
+      .filter((d) => d.domainFilter.length > 0 && d.domainFilterTable)
+      .map((d) => ({ id: d.domainFilterTable, name: `${d.name}-domains`, entries: d.domainFilter }));
+    const seen = new Set<number>();
+    const uniq = tables.filter((t) => (seen.has(t.id) ? false : (seen.add(t.id), true)));
+    if (uniq.length > 0) {
+      out += 'config dnsfilter domain-filter\n';
+      for (const t of uniq) {
+        out += line(1, `edit ${t.id}`);
+        out += setVal(2, 'name', t.name);
+        out += line(2, 'config entries');
+        t.entries.forEach((en, i) => {
+          out += line(3, `edit ${en.id || i + 1}`);
+          out += setVal(4, 'domain', en.domain);
+          out += setVal(4, 'type', en.type);
+          if (en.action !== 'block') out += setVal(4, 'action', en.action);
+          if (!en.status) out += setVal(4, 'status', 'disable');
+          out += line(3, 'next');
+        });
+        out += line(2, 'end');
+        out += line(1, 'next');
+      }
+      out += 'end\n\n';
+    }
+  }
+
+  // --- DNS Filter Profiles ---
+  if (config.securityProfiles.dnsFilter.length > 0) {
+    out += 'config dnsfilter profile\n';
+    for (const d of config.securityProfiles.dnsFilter) {
+      out += line(1, `edit ${q(d.name)}`);
+      out += setVal(2, 'comment', d.comment);
+      if (d.blockBotnet) out += setVal(2, 'block-botnet', 'enable');
+      if (d.safeSearch) out += setVal(2, 'safe-search', 'enable');
+      if (d.youtubeRestrict !== 'none') out += setVal(2, 'youtube-restrict', d.youtubeRestrict);
+      if (d.redirectPortal) out += setVal(2, 'redirect-portal', d.redirectPortal);
+      if (d.logAllDomain) out += setVal(2, 'log-all-domain', 'enable');
+      if (d.stripEch) out += setVal(2, 'strip-ech', 'enable');
+      if (d.externalIpBlocklist.length > 0) out += setArr(2, 'external-ip-blocklist', d.externalIpBlocklist);
+      if (d.ftgdDnsCategories.length > 0) {
+        out += line(2, 'config ftgd-dns');
+        out += line(3, 'config filters');
+        d.ftgdDnsCategories.forEach((c, i) => {
+          out += line(4, `edit ${i + 1}`);
+          out += setVal(5, 'category', c.id);
+          if (c.action !== 'monitor') out += setVal(5, 'action', c.action);
+          out += line(4, 'next');
+        });
+        out += line(3, 'end');
+        out += line(2, 'end');
+      }
+      if (d.domainFilterTable) {
+        out += line(2, 'config domain-filter');
+        out += setVal(3, 'domain-filter-table', d.domainFilterTable);
+        out += line(2, 'end');
+      }
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   // --- Wireless VAPs ---
   if (config.wireless.vaps.length > 0) {
     out += 'config wireless-controller vap\n';

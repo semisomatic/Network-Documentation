@@ -710,7 +710,10 @@ export interface FtgdLocalCategory {
 export interface DNSFilterProfile {
   name: string;
   comment: string;
-  domainFilter: Array<{ id: number; domain: string; type: 'simple' | 'regex'; action: 'allow' | 'block' | 'monitor' }>;
+  // Static domain filter — shown inline (FortiOS stores it in a separate
+  // config dnsfilter domain-filter object referenced by id; we resolve it)
+  domainFilterTable: number;
+  domainFilter: Array<{ id: number; domain: string; type: 'simple' | 'regex' | 'wildcard'; action: 'allow' | 'block' | 'monitor'; status: boolean }>;
   ftgdDnsCategories: Array<{ id: number; action: 'allow' | 'block' | 'monitor' }>;
   blockBotnet: boolean;
   safeSearch: boolean;
@@ -718,6 +721,7 @@ export interface DNSFilterProfile {
   externalIpBlocklist: string[];
   redirectPortal: string;
   logAllDomain: boolean;
+  stripEch: boolean;
 }
 
 export interface AppControlProfile {
@@ -1220,6 +1224,11 @@ export function migrateProject(raw: any): FortigateProject {
     }
     if (project.config.securityProfiles && !project.config.securityProfiles.ftgdLocalCategories) {
       project.config.securityProfiles.ftgdLocalCategories = [];
+    }
+    for (const d of project.config.securityProfiles?.dnsFilter || []) {
+      if (d.domainFilterTable === undefined) d.domainFilterTable = 0;
+      if (d.stripEch === undefined) d.stripEch = false;
+      if (d.domainFilter === undefined) d.domainFilter = [];
     }
   }
   return project as FortigateProject;

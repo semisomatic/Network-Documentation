@@ -1186,6 +1186,50 @@ function mapFtgdLocalCat(section: RawSection): FtgdLocalCategory[] {
   }));
 }
 
+// config dnsfilter domain-filter -> Map<id, entries>
+function mapDnsDomainFilters(section: RawSection | undefined): Map<number, DNSFilterProfile['domainFilter']> {
+  const map = new Map<number, DNSFilterProfile['domainFilter']>();
+  if (!section) return map;
+  for (const e of section.entries) {
+    const entries = (e.children['entries'] || []).map((c) => ({
+      id: parseInt(c.name, 10) || 0,
+      domain: str(c.properties['domain']),
+      type: str(c.properties['type'], 'simple') as 'simple' | 'regex' | 'wildcard',
+      action: str(c.properties['action'], 'block') as 'allow' | 'block' | 'monitor',
+      status: enableDisable(c.properties['status'], 'enable') === 'enable',
+    }));
+    map.set(parseInt(e.name, 10) || 0, entries);
+  }
+  return map;
+}
+
+function mapDNSFilter(section: RawSection, domainFilters: Map<number, DNSFilterProfile['domainFilter']>): DNSFilterProfile[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const cats = (e.children['ftgd-dns'] || [])
+      .filter((f) => f.properties['category'] !== undefined)
+      .map((f) => ({
+        id: num(f.properties['category']),
+        action: str(f.properties['action'], 'monitor') as 'allow' | 'block' | 'monitor',
+      }));
+    const domTable = num(p['domain-filter.domain-filter-table']);
+    return {
+      name: e.name,
+      comment: str(p['comment']),
+      domainFilterTable: domTable,
+      domainFilter: domainFilters.get(domTable) || [],
+      ftgdDnsCategories: cats,
+      blockBotnet: bool(p['block-botnet']),
+      safeSearch: bool(p['safe-search']),
+      youtubeRestrict: str(p['youtube-restrict'], 'none') as DNSFilterProfile['youtubeRestrict'],
+      externalIpBlocklist: strArr(p['external-ip-blocklist']),
+      redirectPortal: str(p['redirect-portal']),
+      logAllDomain: bool(p['log-all-domain']),
+      stripEch: bool(p['strip-ech']),
+    };
+  });
+}
+
 function mapFSSO(section: RawSection): FSSOServer[] {
   return section.entries.map((e) => {
     const p = e.properties;
@@ -1441,6 +1485,12 @@ export function parseFortiConfig(text: string): FortigateConfig {
   if (webFilter) {
     const urlFilters = mapUrlFilters(sections.get('webfilter urlfilter'));
     config.securityProfiles.webFilter = mapWebFilter(webFilter, urlFilters);
+  }
+
+  const dnsFilter = sections.get('dnsfilter profile');
+  if (dnsFilter) {
+    const domainFilters = mapDnsDomainFilters(sections.get('dnsfilter domain-filter'));
+    config.securityProfiles.dnsFilter = mapDNSFilter(dnsFilter, domainFilters);
   }
 
   // Wireless
