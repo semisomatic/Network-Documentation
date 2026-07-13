@@ -895,6 +895,66 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- Application Control ---
+  if (config.securityProfiles.applicationControl.length > 0) {
+    out += 'config application list\n';
+    for (const a of config.securityProfiles.applicationControl) {
+      out += line(1, `edit ${q(a.name)}`);
+      out += setVal(2, 'comment', a.comment);
+      if (!a.deepAppInspection) out += setVal(2, 'deep-app-inspection', 'disable');
+      if (a.options.length > 0) out += setArr(2, 'options', a.options);
+      let eid = 1;
+      out += line(2, 'config entries');
+      // categories grouped by action
+      const groups = new Map<string, number[]>();
+      for (const c of a.categories) {
+        if (!groups.has(c.action)) groups.set(c.action, []);
+        groups.get(c.action)!.push(c.id);
+      }
+      for (const [act, ids] of groups) {
+        out += line(3, `edit ${eid++}`);
+        out += line(4, `set category ${ids.join(' ')}`);
+        if (act === 'block') out += setVal(4, 'action', 'block');
+        else { out += setVal(4, 'action', 'pass'); if (act === 'allow') out += setVal(4, 'log', 'disable'); }
+        out += line(3, 'next');
+      }
+      // overrides
+      for (const ov of a.overrides) {
+        out += line(3, `edit ${eid++}`);
+        if (ov.type === 'application') {
+          if (ov.applications.trim()) out += line(4, `set application ${ov.applications.trim().split(/[\s,]+/).join(' ')}`);
+        } else {
+          if (ov.filterCategories.length) out += line(4, `set category ${ov.filterCategories.join(' ')}`);
+          if (ov.risk.length) out += setArr(4, 'risk', ov.risk);
+          if (ov.popularity.length) out += setArr(4, 'popularity', ov.popularity);
+          if (ov.behavior.length) out += setArr(4, 'behavior', ov.behavior);
+        }
+        if (ov.action !== 'block') out += setVal(4, 'action', ov.action);
+        if (!ov.log) out += setVal(4, 'log', 'disable');
+        out += line(3, 'next');
+      }
+      out += line(2, 'end');
+      if (a.networkProtocolEnforcement && a.networkServices.length > 0) {
+        out += line(2, 'config default-network-services');
+        for (const ns of a.networkServices) {
+          out += line(3, `edit ${ns.id}`);
+          out += setVal(4, 'port', ns.port);
+          if (ns.protocols.length) out += setArr(4, 'services', ns.protocols);
+          if (ns.violationAction !== 'block') out += setVal(4, 'violation-action', ns.violationAction);
+          out += line(3, 'next');
+        }
+        out += line(2, 'end');
+      }
+      const actField = (v: string) => (v === 'block' ? 'block' : 'pass');
+      out += setVal(2, 'other-application-action', actField(a.otherApplicationAction));
+      if (a.otherApplicationAction === 'monitor') out += setVal(2, 'other-application-log', 'enable');
+      out += setVal(2, 'unknown-application-action', actField(a.unknownApplicationAction));
+      if (a.unknownApplicationAction === 'monitor') out += setVal(2, 'unknown-application-log', 'enable');
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   // --- Antivirus Profiles ---
   if (config.securityProfiles.antivirus.length > 0) {
     out += 'config antivirus profile\n';

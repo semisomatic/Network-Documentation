@@ -17,6 +17,7 @@ import {
   FirewallVIP, FirewallIPPool,
   VPNPhase1, VPNPhase2, SSLVPNSettings, SSLVPNPortal, SSLVPNAuthRule,
   AntivirusProfile, WebFilterProfile, DNSFilterProfile, FtgdLocalCategory,
+  AppControlOverride, AppControlNetworkService,
   AppControlProfile, IPSProfile, SSLInspectionProfile,
   SDWANConfig, SDWANMember, SDWANHealthCheck, SDWANRule, SDWANZone,
   TrafficShaper, TrafficShapingPolicy,
@@ -1127,6 +1128,68 @@ function mapUserGroups(section: RawSection): UserGroup[] {
   });
 }
 
+function mapAppControl(section: RawSection): AppControlProfile[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const categories: AppControlProfile['categories'] = [];
+    const overrides: AppControlOverride[] = [];
+    let emptyEntryAction = '';
+    let emptyEntryLog = false;
+
+    for (const en of e.children['entries'] || []) {
+      const ep = en.properties;
+      const apps = strArr(ep['application']);
+      const cats = strArr(ep['category']).map((s) => parseInt(s, 10) || 0);
+      const behavior = strArr(ep['behavior']);
+      const popularity = strArr(ep['popularity']);
+      const risk = strArr(ep['risk']);
+      const action = str(ep['action'], 'block');
+      const log = enableDisable(ep['log'], 'enable') === 'enable';
+      const isFilter = behavior.length > 0 || popularity.length > 0 || risk.length > 0;
+
+      if (apps.length > 0) {
+        overrides.push({ id: overrides.length + 1, type: 'application', action: action as any,
+          applications: apps.join(' '), filterCategories: [], behavior: [], popularity: [], risk: [], log });
+      } else if (isFilter) {
+        overrides.push({ id: overrides.length + 1, type: 'filter', action: action as any,
+          applications: '', filterCategories: cats, behavior, popularity, risk, log });
+      } else if (cats.length > 0) {
+        const catAction = action === 'pass' ? (log ? 'monitor' : 'allow') : 'block';
+        for (const c of cats) categories.push({ id: c, action: catAction as 'allow' | 'monitor' | 'block' });
+      } else {
+        emptyEntryAction = action;
+        emptyEntryLog = log;
+      }
+    }
+
+    const deriveAction = (field: string, logField: string, fallback: string, fallbackLog: boolean): 'pass' | 'monitor' | 'block' => {
+      const a = str(p[field], fallback);
+      const l = p[logField] !== undefined ? bool(p[logField]) : fallbackLog;
+      return a === 'block' ? 'block' : l ? 'monitor' : 'pass';
+    };
+
+    const networkServices: AppControlNetworkService[] = (e.children['default-network-services'] || []).map((ns) => ({
+      id: parseInt(ns.name, 10) || 0,
+      port: num(ns.properties['port']),
+      protocols: strArr(ns.properties['services']),
+      violationAction: str(ns.properties['violation-action'], 'block') as 'monitor' | 'block',
+    }));
+
+    return {
+      name: e.name,
+      comment: str(p['comment']),
+      categories,
+      otherApplicationAction: deriveAction('other-application-action', 'other-application-log', emptyEntryAction || 'pass', emptyEntryLog),
+      unknownApplicationAction: deriveAction('unknown-application-action', 'unknown-application-log', 'pass', false),
+      overrides,
+      networkProtocolEnforcement: networkServices.length > 0,
+      networkServices,
+      deepAppInspection: bool(p['deep-app-inspection'], true),
+      options: strArr(p['options']),
+    };
+  });
+}
+
 function mapAntivirus(section: RawSection): AntivirusProfile[] {
   const protos = ['http', 'ftp', 'imap', 'pop3', 'smtp', 'mapi', 'nntp', 'cifs', 'ssh'];
   return section.entries.map((e) => {
@@ -1515,6 +1578,9 @@ export function parseFortiConfig(text: string): FortigateConfig {
   // Security profiles
   const antivirus = sections.get('antivirus profile');
   if (antivirus) config.securityProfiles.antivirus = mapAntivirus(antivirus);
+
+  const appList = sections.get('application list');
+  if (appList) config.securityProfiles.applicationControl = mapAppControl(appList);
 
   const ftgdLocalCat = sections.get('webfilter ftgd-local-cat');
   if (ftgdLocalCat) config.securityProfiles.ftgdLocalCategories = mapFtgdLocalCat(ftgdLocalCat);

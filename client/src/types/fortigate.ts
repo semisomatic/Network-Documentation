@@ -729,24 +729,37 @@ export interface DNSFilterProfile {
   stripEch: boolean;
 }
 
+export interface AppControlOverride {
+  id: number;
+  type: 'application' | 'filter';
+  action: 'pass' | 'block' | 'reset' | 'quarantine';
+  applications: string;      // type=application: manual app ids/names (space-separated)
+  filterCategories: number[];
+  behavior: string[];
+  popularity: string[];      // "1".."5"
+  risk: string[];            // "1".."5"
+  log: boolean;
+}
+
+export interface AppControlNetworkService {
+  id: number;
+  port: number;
+  protocols: string[];       // DNS, FTP, HTTP, ...
+  violationAction: 'monitor' | 'block';
+}
+
 export interface AppControlProfile {
   name: string;
   comment: string;
-  entries: Array<{
-    id: number;
-    category: number[];
-    application: number[];
-    action: 'pass' | 'block' | 'reset';
-    log: boolean;
-  }>;
-  defaultNetworkServices: Array<{
-    id: number;
-    port: number;
-    services: string[];
-    violationAction: 'allow' | 'monitor' | 'block';
-  }>;
+  // FortiGuard category actions (config entries with `set category`)
+  categories: Array<{ id: number; action: 'allow' | 'monitor' | 'block' }>;
+  otherApplicationAction: 'pass' | 'monitor' | 'block';   // all other known applications
+  unknownApplicationAction: 'pass' | 'monitor' | 'block';
+  overrides: AppControlOverride[];
+  networkProtocolEnforcement: boolean;
+  networkServices: AppControlNetworkService[];
   deepAppInspection: boolean;
-  options: string[];
+  options: string[];         // raw tokens (round-trip)
 }
 
 export interface IPSProfile {
