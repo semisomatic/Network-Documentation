@@ -4,9 +4,8 @@ import { useProjectStore } from '../../store/projectStore';
 import { EditorPage, Card, FormSection, FieldRow, Segmented, Toggle, InlineTable } from '../shared/forti';
 import type { InlineColumn } from '../shared/forti';
 import type { WebFilterProfile } from '../../types/fortigate';
-import { categoryName, categoryGroup, FORTIGUARD_CATEGORIES } from '../../data/fortiguardCategories';
+import CategoryFilterTable from './CategoryFilterTable';
 
-type Cat = WebFilterProfile['ftgdWfCategories'][number];
 type Url = WebFilterProfile['urlFilterEntries'][number];
 
 interface Props {
@@ -28,7 +27,6 @@ export default function WebFilterEditor({ initial, isNew, onSave, onCancel }: Pr
   const [draft, setDraft] = useState<WebFilterProfile>(initial);
   const set = (patch: Partial<WebFilterProfile>) => setDraft((d) => ({ ...d, ...patch }));
 
-  const [catEdit, setCatEdit] = useState<{ item: Cat; index: number } | null>(null);
   const [urlEdit, setUrlEdit] = useState<{ item: Url; index: number } | null>(null);
 
   // options[] token helpers
@@ -36,17 +34,6 @@ export default function WebFilterEditor({ initial, isNew, onSave, onCancel }: Pr
   const setOpt = (t: string, on: boolean) =>
     set({ options: on ? Array.from(new Set([...draft.options, t])) : draft.options.filter((x) => x !== t) });
 
-  // ---- category picker options (known FortiGuard + local) ----
-  const knownCatOptions = [
-    ...localCats.map((c) => ({ value: String(c.id), label: `${c.name} (Local)` })),
-    ...Object.entries(FORTIGUARD_CATEGORIES).map(([id, c]) => ({ value: id, label: `${c.name} (${c.group})` })),
-  ];
-
-  const catColumns: InlineColumn<Cat>[] = [
-    { key: 'name', label: 'Category', render: (c) => categoryName(c.id, localCats) },
-    { key: 'group', label: 'Group', render: (c) => categoryGroup(c.id, localCats) },
-    { key: 'action', label: 'Action', render: (c) => c.action.charAt(0).toUpperCase() + c.action.slice(1) },
-  ];
   const urlColumns: InlineColumn<Url>[] = [
     { key: 'url', label: 'URL' },
     { key: 'type', label: 'Type' },
@@ -54,10 +41,6 @@ export default function WebFilterEditor({ initial, isNew, onSave, onCancel }: Pr
     { key: 'status', label: 'Enabled', render: (u) => (u.status ? 'Yes' : 'No') },
   ];
 
-  const catFields: FieldDef[] = [
-    { key: 'id', label: 'Category', type: 'select', options: knownCatOptions },
-    { key: 'action', label: 'Action', type: 'select', options: ACTION_OPTS },
-  ];
   const urlFields: FieldDef[] = [
     { key: 'url', label: 'URL / Pattern', type: 'text' },
     { key: 'type', label: 'Type', type: 'select', options: [
@@ -70,14 +53,6 @@ export default function WebFilterEditor({ initial, isNew, onSave, onCancel }: Pr
     { key: 'status', label: 'Enabled', type: 'checkbox' },
   ];
 
-  const saveCat = () => {
-    if (!catEdit) return;
-    const item = { ...catEdit.item, id: parseInt(String(catEdit.item.id), 10) || 0 };
-    const list = [...draft.ftgdWfCategories];
-    if (catEdit.index < 0) list.push(item); else list[catEdit.index] = item;
-    set({ ftgdWfCategories: list });
-    setCatEdit(null);
-  };
   const saveUrl = () => {
     if (!urlEdit) return;
     const list = [...draft.urlFilterEntries];
@@ -107,13 +82,11 @@ export default function WebFilterEditor({ initial, isNew, onSave, onCancel }: Pr
           {/* FortiGuard categories */}
           <FormSection title="FortiGuard Category Based Filter">
             <FieldRow label="" align="start">
-              <InlineTable<Cat>
-                columns={catColumns}
-                data={draft.ftgdWfCategories}
-                maxHeight={320}
-                onCreate={() => setCatEdit({ item: { id: 0, action: 'monitor' }, index: -1 })}
-                onEdit={(item, index) => setCatEdit({ item: { ...item }, index })}
-                onDelete={(_, index) => set({ ftgdWfCategories: draft.ftgdWfCategories.filter((_, i) => i !== index) })}
+              <CategoryFilterTable
+                value={draft.ftgdWfCategories}
+                onChange={(v) => set({ ftgdWfCategories: v as WebFilterProfile['ftgdWfCategories'] })}
+                actionOptions={ACTION_OPTS}
+                localCategories={localCats}
               />
             </FieldRow>
             <FieldRow label="Allow users to override blocked categories">
@@ -165,11 +138,6 @@ export default function WebFilterEditor({ initial, isNew, onSave, onCancel }: Pr
         </Card>
       </EditorPage>
 
-      {catEdit && (
-        <EditModal title="Category" fields={catFields} values={catEdit.item} isNew={catEdit.index < 0}
-          onChange={(key, val) => setCatEdit({ ...catEdit, item: { ...catEdit.item, [key]: val } })}
-          onSave={saveCat} onCancel={() => setCatEdit(null)} />
-      )}
       {urlEdit && (
         <EditModal title="URL Filter Entry" fields={urlFields} values={urlEdit.item} isNew={urlEdit.index < 0}
           onChange={(key, val) => setUrlEdit({ ...urlEdit, item: { ...urlEdit.item, [key]: val } })}

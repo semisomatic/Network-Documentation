@@ -4,9 +4,8 @@ import { useProjectStore } from '../../store/projectStore';
 import { EditorPage, Card, FormSection, FieldRow, Segmented, Toggle, InlineTable, StringChips } from '../shared/forti';
 import type { InlineColumn } from '../shared/forti';
 import type { DNSFilterProfile } from '../../types/fortigate';
-import { categoryName, categoryGroup, FORTIGUARD_CATEGORIES } from '../../data/fortiguardCategories';
+import CategoryFilterTable from './CategoryFilterTable';
 
-type Cat = DNSFilterProfile['ftgdDnsCategories'][number];
 type Dom = DNSFilterProfile['domainFilter'][number];
 
 interface Props {
@@ -27,21 +26,10 @@ export default function DNSFilterEditor({ initial, isNew, onSave, onCancel }: Pr
   const [draft, setDraft] = useState<DNSFilterProfile>(initial);
   const set = (patch: Partial<DNSFilterProfile>) => setDraft((d) => ({ ...d, ...patch }));
 
-  const [catEdit, setCatEdit] = useState<{ item: Cat; index: number } | null>(null);
   const [domEdit, setDomEdit] = useState<{ item: Dom; index: number } | null>(null);
   const [extBlocklist, setExtBlocklist] = useState(initial.externalIpBlocklist.length > 0);
   const redirectSpecify = draft.redirectPortal !== '';
 
-  const knownCatOptions = [
-    ...localCats.map((c) => ({ value: String(c.id), label: `${c.name} (Local)` })),
-    ...Object.entries(FORTIGUARD_CATEGORIES).map(([id, c]) => ({ value: id, label: `${c.name} (${c.group})` })),
-  ];
-
-  const catColumns: InlineColumn<Cat>[] = [
-    { key: 'name', label: 'Category', render: (c) => categoryName(c.id, localCats) },
-    { key: 'group', label: 'Group', render: (c) => categoryGroup(c.id, localCats) },
-    { key: 'action', label: 'Action', render: (c) => (c.action === 'block' ? 'Redirect to Block Portal' : c.action.charAt(0).toUpperCase() + c.action.slice(1)) },
-  ];
   const domColumns: InlineColumn<Dom>[] = [
     { key: 'domain', label: 'Domain' },
     { key: 'type', label: 'Type' },
@@ -49,10 +37,6 @@ export default function DNSFilterEditor({ initial, isNew, onSave, onCancel }: Pr
     { key: 'status', label: 'Enabled', render: (d) => (d.status ? 'Yes' : 'No') },
   ];
 
-  const catFields: FieldDef[] = [
-    { key: 'id', label: 'Category', type: 'select', options: knownCatOptions },
-    { key: 'action', label: 'Action', type: 'select', options: ACTION_OPTS },
-  ];
   const domFields: FieldDef[] = [
     { key: 'domain', label: 'Domain', type: 'text' },
     { key: 'type', label: 'Type', type: 'select', options: [
@@ -64,14 +48,6 @@ export default function DNSFilterEditor({ initial, isNew, onSave, onCancel }: Pr
     { key: 'status', label: 'Enabled', type: 'checkbox' },
   ];
 
-  const saveCat = () => {
-    if (!catEdit) return;
-    const item = { ...catEdit.item, id: parseInt(String(catEdit.item.id), 10) || 0 };
-    const list = [...draft.ftgdDnsCategories];
-    if (catEdit.index < 0) list.push(item); else list[catEdit.index] = item;
-    set({ ftgdDnsCategories: list });
-    setCatEdit(null);
-  };
   const saveDom = () => {
     if (!domEdit) return;
     const list = [...draft.domainFilter];
@@ -107,13 +83,11 @@ export default function DNSFilterEditor({ initial, isNew, onSave, onCancel }: Pr
           {/* FortiGuard categories */}
           <FormSection title="FortiGuard Category Based Filter">
             <FieldRow label="" align="start">
-              <InlineTable<Cat>
-                columns={catColumns}
-                data={draft.ftgdDnsCategories}
-                maxHeight={320}
-                onCreate={() => setCatEdit({ item: { id: 0, action: 'monitor' }, index: -1 })}
-                onEdit={(item, index) => setCatEdit({ item: { ...item }, index })}
-                onDelete={(_, index) => set({ ftgdDnsCategories: draft.ftgdDnsCategories.filter((_, i) => i !== index) })}
+              <CategoryFilterTable
+                value={draft.ftgdDnsCategories}
+                onChange={(v) => set({ ftgdDnsCategories: v as DNSFilterProfile['ftgdDnsCategories'] })}
+                actionOptions={ACTION_OPTS}
+                localCategories={localCats}
               />
             </FieldRow>
           </FormSection>
@@ -163,11 +137,6 @@ export default function DNSFilterEditor({ initial, isNew, onSave, onCancel }: Pr
         </Card>
       </EditorPage>
 
-      {catEdit && (
-        <EditModal title="Category" fields={catFields} values={catEdit.item} isNew={catEdit.index < 0}
-          onChange={(key, val) => setCatEdit({ ...catEdit, item: { ...catEdit.item, [key]: val } })}
-          onSave={saveCat} onCancel={() => setCatEdit(null)} />
-      )}
       {domEdit && (
         <EditModal title="Domain Filter Entry" fields={domFields} values={domEdit.item} isNew={domEdit.index < 0}
           onChange={(key, val) => setDomEdit({ ...domEdit, item: { ...domEdit.item, [key]: val } })}
