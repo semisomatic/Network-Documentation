@@ -9,7 +9,7 @@ import {
   HAConfig, NTPConfig, SNMPConfig, SNMPCommunity, CentralManagementConfig,
   FortiAnalyzerConfig, SyslogConfig,
   StaticRoute, PolicyRoute,
-  BGPConfig, BGPNeighbor, BGPNetwork,
+  BGPConfig, BGPNeighbor, BGPNetwork, BGPNeighborGroup, BGPNeighborRange,
   OSPFConfig, OSPFArea, OSPFNetwork, OSPFInterface,
   WirelessVAP, WirelessWTPProfile, WirelessWTP,
   FirewallPolicy, FirewallAddress, FirewallAddressGroup,
@@ -606,7 +606,7 @@ function mapBGP(section: RawSection, sections: Map<string, RawSection>): BGPConf
         routeMapOut: str(np['route-map-out']),
         updateSource: str(np['update-source']),
         bfd: bool(np['bfd']),
-        status: enableDisable(np['shutdown'], 'enable') === 'enable' ? 'disable' : 'enable',
+        status: enableDisable(np['shutdown'], 'disable') === 'enable' ? 'disable' : 'enable',
         comment: str(np['description']),
       });
     }
@@ -624,28 +624,73 @@ function mapBGP(section: RawSection, sections: Map<string, RawSection>): BGPConf
     }
   }
 
-  // Redistribute from nested properties
-  const redistribute: BGPConfig['redistribute'] = {
-    connected: bool(p['redistribute.connected.status']),
-    connectedRouteMap: str(p['redistribute.connected.route-map']),
-    static: bool(p['redistribute.static.status']),
-    staticRouteMap: str(p['redistribute.static.route-map']),
-    ospf: bool(p['redistribute.ospf.status']),
-    ospfRouteMap: str(p['redistribute.ospf.route-map']),
+  const neighborGroups: BGPNeighborGroup[] = [];
+  const ngSection = sections.get('router bgp neighbor-group');
+  if (ngSection) for (const e of ngSection.entries) neighborGroups.push({ name: e.name, remoteAs: num(e.properties['remote-as']) });
+
+  const neighborRanges: BGPNeighborRange[] = [];
+  const nrSection = sections.get('router bgp neighbor-range');
+  if (nrSection) for (const e of nrSection.entries) neighborRanges.push({
+    id: parseInt(e.name, 10) || 0,
+    prefix: str(e.properties['prefix']),
+    neighborGroup: str(e.properties['neighbor-group']),
+    maxNeighborNum: num(e.properties['max-neighbor-num']),
+  });
+
+  // Redistribute (each is a nested "config redistribute <name>" sub-section)
+  const redist = (name: string) => {
+    const s = sections.get(`router bgp redistribute ${name}`);
+    return { on: s ? bool(s.properties['status']) : false, rm: s ? str(s.properties['route-map']) : '' };
   };
+  const rc = redist('connected'), rr = redist('rip'), ro = redist('ospf'), rs = redist('static'), ri = redist('isis');
 
   return {
     as: num(p['as']),
     routerId: str(p['router-id']),
+    neighbors,
+    neighborGroups,
+    neighborRanges,
+    networks,
+    redistribute: {
+      connected: rc.on, connectedRouteMap: rc.rm, rip: rr.on, ripRouteMap: rr.rm,
+      ospf: ro.on, ospfRouteMap: ro.rm, static: rs.on, staticRouteMap: rs.rm, isis: ri.on, isisRouteMap: ri.rm,
+    },
+    dampening: bool(p['dampening']),
+    dampeningRouteMap: str(p['dampening-route-map']),
+    dampeningReachabilityHalfLife: num(p['dampening-reachability-half-life'], 15),
+    dampeningUnreachabilityHalfLife: num(p['dampening-unreachability-half-life'], 15),
+    dampeningReuse: num(p['dampening-reuse'], 750),
+    dampeningSuppress: num(p['dampening-suppress'], 2000),
+    dampeningMaxSuppressTime: num(p['dampening-max-suppress-time'], 60),
+    gracefulRestart: bool(p['graceful-restart']),
+    gracefulRestartTime: num(p['graceful-restart-time'], 120),
+    gracefulStalepathTime: num(p['graceful-stalepath-time'], 360),
+    gracefulUpdateDelay: num(p['graceful-update-delay'], 120),
+    clusterId: str(p['cluster-id'], '0.0.0.0'),
+    defaultLocalPreference: num(p['default-local-preference'], 100),
+    distanceExternal: num(p['distance-external'], 20),
+    distanceInternal: num(p['distance-internal'], 200),
+    distanceLocal: num(p['distance-local'], 200),
+    keepaliveTimer: num(p['keepalive-timer'], 60),
+    holdtimeTimer: num(p['holdtime-timer'], 180),
+    scanTime: num(p['scan-time'], 60),
+    alwaysCompareMed: bool(p['always-compare-med']),
+    bestpathAsPathIgnore: bool(p['bestpath-as-path-ignore']),
+    bestpathCmpConfedAspath: bool(p['bestpath-cmp-confed-aspath']),
+    bestpathCmpRouterid: bool(p['bestpath-cmp-routerid']),
+    bestpathMedConfed: bool(p['bestpath-med-confed']),
+    bestpathMedMissingAsWorst: bool(p['bestpath-med-missing-as-worst']),
+    synchronization: bool(p['synchronization']),
+    deterministicMed: bool(p['deterministic-med']),
+    clientToClientReflection: bool(p['client-to-client-reflection'], true),
     ebgpMultipath: bool(p['ebgp-multipath']),
     ibgpMultipath: bool(p['ibgp-multipath']),
-    bestpathMedConfed: bool(p['bestpath-med-confed']),
-    bestpathAsPathIgnore: bool(p['bestpath-aspath-ignore']),
-    gracefulRestart: bool(p['graceful-restart']),
+    additionalPath: bool(p['additional-path']),
+    enforceFirstAs: bool(p['enforce-first-as'], true),
+    fastExternalFailover: bool(p['fast-external-failover'], true),
     logNeighborChanges: bool(p['log-neighbour-changes'], true),
-    neighbors,
-    networks,
-    redistribute,
+    networkImportCheck: bool(p['network-import-check'], true),
+    ignoreOptionalCapability: bool(p['ignore-optional-capability'], true),
   };
 }
 

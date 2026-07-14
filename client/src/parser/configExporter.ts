@@ -335,10 +335,49 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'config router bgp\n';
     out += setVal(1, 'as', bgp.as);
     out += setVal(1, 'router-id', bgp.routerId);
+    if (bgp.clusterId && bgp.clusterId !== '0.0.0.0') out += setVal(1, 'cluster-id', bgp.clusterId);
+    if (bgp.defaultLocalPreference !== 100) out += setVal(1, 'default-local-preference', bgp.defaultLocalPreference);
+    if (bgp.distanceExternal !== 20) out += setVal(1, 'distance-external', bgp.distanceExternal);
+    if (bgp.distanceInternal !== 200) out += setVal(1, 'distance-internal', bgp.distanceInternal);
+    if (bgp.distanceLocal !== 200) out += setVal(1, 'distance-local', bgp.distanceLocal);
+    if (bgp.keepaliveTimer !== 60) out += setVal(1, 'keepalive-timer', bgp.keepaliveTimer);
+    if (bgp.holdtimeTimer !== 180) out += setVal(1, 'holdtime-timer', bgp.holdtimeTimer);
+    if (bgp.scanTime !== 60) out += setVal(1, 'scan-time', bgp.scanTime);
+    // Dampening
+    if (bgp.dampening) {
+      out += setVal(1, 'dampening', true);
+      if (bgp.dampeningRouteMap) out += setVal(1, 'dampening-route-map', bgp.dampeningRouteMap);
+      out += setVal(1, 'dampening-reachability-half-life', bgp.dampeningReachabilityHalfLife);
+      out += setVal(1, 'dampening-unreachability-half-life', bgp.dampeningUnreachabilityHalfLife);
+      out += setVal(1, 'dampening-reuse', bgp.dampeningReuse);
+      out += setVal(1, 'dampening-suppress', bgp.dampeningSuppress);
+      out += setVal(1, 'dampening-max-suppress-time', bgp.dampeningMaxSuppressTime);
+    }
+    // Graceful restart
+    if (bgp.gracefulRestart) {
+      out += setVal(1, 'graceful-restart', true);
+      out += setVal(1, 'graceful-restart-time', bgp.gracefulRestartTime);
+      out += setVal(1, 'graceful-stalepath-time', bgp.gracefulStalepathTime);
+      out += setVal(1, 'graceful-update-delay', bgp.gracefulUpdateDelay);
+    }
+    // Best path selection
+    if (bgp.alwaysCompareMed) out += setVal(1, 'always-compare-med', true);
+    if (bgp.bestpathAsPathIgnore) out += setVal(1, 'bestpath-as-path-ignore', true);
+    if (bgp.bestpathCmpConfedAspath) out += setVal(1, 'bestpath-cmp-confed-aspath', true);
+    if (bgp.bestpathCmpRouterid) out += setVal(1, 'bestpath-cmp-routerid', true);
+    if (bgp.bestpathMedConfed) out += setVal(1, 'bestpath-med-confed', true);
+    if (bgp.bestpathMedMissingAsWorst) out += setVal(1, 'bestpath-med-missing-as-worst', true);
+    if (bgp.synchronization) out += setVal(1, 'synchronization', true);
+    if (bgp.deterministicMed) out += setVal(1, 'deterministic-med', true);
+    if (!bgp.clientToClientReflection) out += setVal(1, 'client-to-client-reflection', false);
     if (bgp.ebgpMultipath) out += setVal(1, 'ebgp-multipath', true);
     if (bgp.ibgpMultipath) out += setVal(1, 'ibgp-multipath', true);
-    if (bgp.gracefulRestart) out += setVal(1, 'graceful-restart', true);
+    if (bgp.additionalPath) out += setVal(1, 'additional-path', true);
+    if (!bgp.enforceFirstAs) out += setVal(1, 'enforce-first-as', false);
+    if (!bgp.fastExternalFailover) out += setVal(1, 'fast-external-failover', false);
     if (!bgp.logNeighborChanges) out += setVal(1, 'log-neighbour-changes', false);
+    if (!bgp.networkImportCheck) out += setVal(1, 'network-import-check', false);
+    if (!bgp.ignoreOptionalCapability) out += setVal(1, 'ignore-optional-capability', false);
     if (bgp.neighbors.length > 0) {
       out += line(1, 'config neighbor');
       for (const n of bgp.neighbors) {
@@ -353,6 +392,27 @@ export function exportFortiConfig(config: FortigateConfig): string {
         out += setVal(3, 'route-map-out', n.routeMapOut);
         out += setVal(3, 'update-source', n.updateSource);
         if (n.bfd) out += setVal(3, 'bfd', true);
+        if (n.status === 'disable') out += setVal(3, 'shutdown', true);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+    if (bgp.neighborGroups.length > 0) {
+      out += line(1, 'config neighbor-group');
+      for (const g of bgp.neighborGroups) {
+        out += line(2, `edit ${q(g.name)}`);
+        out += setVal(3, 'remote-as', g.remoteAs);
+        out += line(2, 'next');
+      }
+      out += line(1, 'end');
+    }
+    if (bgp.neighborRanges.length > 0) {
+      out += line(1, 'config neighbor-range');
+      for (const r of bgp.neighborRanges) {
+        out += line(2, `edit ${r.id}`);
+        out += setVal(3, 'prefix', r.prefix);
+        out += setVal(3, 'neighbor-group', r.neighborGroup);
+        if (r.maxNeighborNum) out += setVal(3, 'max-neighbor-num', r.maxNeighborNum);
         out += line(2, 'next');
       }
       out += line(1, 'end');
@@ -367,24 +427,18 @@ export function exportFortiConfig(config: FortigateConfig): string {
       }
       out += line(1, 'end');
     }
-    if (bgp.redistribute.connected) {
-      out += line(1, 'config redistribute connected');
+    const redistBlock = (name: string, on: boolean, rm: string) => {
+      if (!on) return;
+      out += line(1, `config redistribute ${q(name)}`);
       out += setVal(2, 'status', 'enable');
-      out += setVal(2, 'route-map', bgp.redistribute.connectedRouteMap);
+      if (rm) out += setVal(2, 'route-map', rm);
       out += line(1, 'end');
-    }
-    if (bgp.redistribute.static) {
-      out += line(1, 'config redistribute static');
-      out += setVal(2, 'status', 'enable');
-      out += setVal(2, 'route-map', bgp.redistribute.staticRouteMap);
-      out += line(1, 'end');
-    }
-    if (bgp.redistribute.ospf) {
-      out += line(1, 'config redistribute ospf');
-      out += setVal(2, 'status', 'enable');
-      out += setVal(2, 'route-map', bgp.redistribute.ospfRouteMap);
-      out += line(1, 'end');
-    }
+    };
+    redistBlock('connected', bgp.redistribute.connected, bgp.redistribute.connectedRouteMap);
+    redistBlock('rip', bgp.redistribute.rip, bgp.redistribute.ripRouteMap);
+    redistBlock('ospf', bgp.redistribute.ospf, bgp.redistribute.ospfRouteMap);
+    redistBlock('static', bgp.redistribute.static, bgp.redistribute.staticRouteMap);
+    redistBlock('isis', bgp.redistribute.isis, bgp.redistribute.isisRouteMap);
     out += 'end\n\n';
   }
 

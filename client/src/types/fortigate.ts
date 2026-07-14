@@ -302,27 +302,74 @@ export interface BGPNetwork {
   routeMap: string;
 }
 
+export interface BGPNeighborGroup {
+  name: string;
+  remoteAs: number;
+}
+
+export interface BGPNeighborRange {
+  id: number;
+  prefix: string;
+  neighborGroup: string;
+  maxNeighborNum: number;
+}
+
 export interface BGPRedistribute {
-  connected: boolean;
-  connectedRouteMap: string;
-  static: boolean;
-  staticRouteMap: string;
-  ospf: boolean;
-  ospfRouteMap: string;
+  connected: boolean; connectedRouteMap: string;
+  rip: boolean; ripRouteMap: string;
+  ospf: boolean; ospfRouteMap: string;
+  static: boolean; staticRouteMap: string;
+  isis: boolean; isisRouteMap: string;
 }
 
 export interface BGPConfig {
   as: number;
   routerId: string;
-  ebgpMultipath: boolean;
-  ibgpMultipath: boolean;
-  bestpathMedConfed: boolean;
-  bestpathAsPathIgnore: boolean;
-  gracefulRestart: boolean;
-  logNeighborChanges: boolean;
   neighbors: BGPNeighbor[];
+  neighborGroups: BGPNeighborGroup[];
+  neighborRanges: BGPNeighborRange[];
   networks: BGPNetwork[];
   redistribute: BGPRedistribute;
+  // Dampening
+  dampening: boolean;
+  dampeningRouteMap: string;
+  dampeningReachabilityHalfLife: number;
+  dampeningUnreachabilityHalfLife: number;
+  dampeningReuse: number;
+  dampeningSuppress: number;
+  dampeningMaxSuppressTime: number;
+  // Graceful restart
+  gracefulRestart: boolean;
+  gracefulRestartTime: number;
+  gracefulStalepathTime: number;
+  gracefulUpdateDelay: number;
+  // Advanced options
+  clusterId: string;
+  defaultLocalPreference: number;
+  distanceExternal: number;
+  distanceInternal: number;
+  distanceLocal: number;
+  keepaliveTimer: number;
+  holdtimeTimer: number;
+  scanTime: number;
+  // Best path selection
+  alwaysCompareMed: boolean;
+  bestpathAsPathIgnore: boolean;
+  bestpathCmpConfedAspath: boolean;
+  bestpathCmpRouterid: boolean;
+  bestpathMedConfed: boolean;
+  bestpathMedMissingAsWorst: boolean;
+  synchronization: boolean;
+  deterministicMed: boolean;
+  clientToClientReflection: boolean;
+  ebgpMultipath: boolean;
+  ibgpMultipath: boolean;
+  additionalPath: boolean;
+  enforceFirstAs: boolean;
+  fastExternalFailover: boolean;
+  logNeighborChanges: boolean;
+  networkImportCheck: boolean;
+  ignoreOptionalCapability: boolean;
 }
 
 // --- OSPF ---
@@ -1117,11 +1164,20 @@ export function createDefaultConfig(): FortigateConfig {
       static: [],
       policy: [],
       bgp: {
-        as: 0, routerId: '', ebgpMultipath: false, ibgpMultipath: false,
-        bestpathMedConfed: false, bestpathAsPathIgnore: false,
-        gracefulRestart: false, logNeighborChanges: true,
-        neighbors: [], networks: [],
-        redistribute: { connected: false, connectedRouteMap: '', static: false, staticRouteMap: '', ospf: false, ospfRouteMap: '' },
+        as: 0, routerId: '', neighbors: [], neighborGroups: [], neighborRanges: [], networks: [],
+        redistribute: {
+          connected: false, connectedRouteMap: '', rip: false, ripRouteMap: '', ospf: false, ospfRouteMap: '',
+          static: false, staticRouteMap: '', isis: false, isisRouteMap: '',
+        },
+        dampening: false, dampeningRouteMap: '', dampeningReachabilityHalfLife: 15, dampeningUnreachabilityHalfLife: 15,
+        dampeningReuse: 750, dampeningSuppress: 2000, dampeningMaxSuppressTime: 60,
+        gracefulRestart: false, gracefulRestartTime: 120, gracefulStalepathTime: 360, gracefulUpdateDelay: 120,
+        clusterId: '0.0.0.0', defaultLocalPreference: 100, distanceExternal: 20, distanceInternal: 200, distanceLocal: 200,
+        keepaliveTimer: 60, holdtimeTimer: 180, scanTime: 60,
+        alwaysCompareMed: false, bestpathAsPathIgnore: false, bestpathCmpConfedAspath: false, bestpathCmpRouterid: false,
+        bestpathMedConfed: false, bestpathMedMissingAsWorst: false, synchronization: false, deterministicMed: false,
+        clientToClientReflection: true, ebgpMultipath: false, ibgpMultipath: false, additionalPath: false,
+        enforceFirstAs: true, fastExternalFailover: true, logNeighborChanges: true, networkImportCheck: true, ignoreOptionalCapability: true,
       },
       ospf: {
         routerId: '', defaultInformationOriginate: false, defaultInformationOriginateAlways: false,
@@ -1221,8 +1277,15 @@ export function migrateProject(raw: any): FortigateProject {
   if (!project.highlights) project.highlights = {};
   if (!project._deletedNames) project._deletedNames = {};
   if (project.config) {
-    if (!project.config.router.bgp) {
-      project.config.router.bgp = createDefaultConfig().router.bgp;
+    {
+      const dbgp = createDefaultConfig().router.bgp;
+      const cur = project.config.router.bgp || {};
+      project.config.router.bgp = {
+        ...dbgp, ...cur,
+        redistribute: { ...dbgp.redistribute, ...(cur.redistribute || {}) },
+        neighborGroups: cur.neighborGroups || [],
+        neighborRanges: cur.neighborRanges || [],
+      };
     }
     if (!project.config.router.ospf) {
       project.config.router.ospf = createDefaultConfig().router.ospf;
