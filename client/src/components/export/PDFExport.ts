@@ -280,9 +280,21 @@ export async function generatePDF(project: FortigateProject) {
   // --- Static Routes ---
   if (c.router.static.length) {
     y = addSection(doc, 'Static Routes', y, tocEntries);
+    const toCidr = (dst: string) => {
+      const t = (dst || '').trim();
+      if (!t || t === '0.0.0.0 0.0.0.0' || t === '0.0.0.0/0') return '0.0.0.0/0';
+      const parts = t.split(/\s+/);
+      if (parts.length === 2 && /^\d+\.\d+\.\d+\.\d+$/.test(parts[1])) {
+        const bits = parts[1].split('.').reduce((a, o) => a + ((parseInt(o) >>> 0).toString(2).match(/1/g) || []).length, 0);
+        return `${parts[0]}/${bits}`;
+      }
+      return t;
+    };
+    const iface = (r: typeof c.router.static[number]) =>
+      r.sdwanZone ? `SD-WAN: ${r.sdwanZone}` : r.blackhole ? 'Blackhole' : r.device;
     y = addTable(doc,
       ['Seq', 'Destination', 'Gateway', 'Interface', 'Distance', 'Status', 'Comment'],
-      c.router.static.map(r => [String(r.seqNum), r.dstaddr || r.dst, r.gateway, r.device, String(r.distance), r.status, r.comment]),
+      c.router.static.map(r => [String(r.seqNum), r.dstaddr || toCidr(r.dst), r.gateway, iface(r), String(r.distance), r.status, r.comment]),
       y,
     );
   }
