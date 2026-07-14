@@ -17,7 +17,7 @@ import {
   FirewallVIP, FirewallIPPool,
   VPNPhase1, VPNPhase2, SSLVPNSettings, SSLVPNPortal, SSLVPNAuthRule,
   AntivirusProfile, WebFilterProfile, DNSFilterProfile, FtgdLocalCategory,
-  AppControlOverride, AppControlNetworkService,
+  AppControlOverride, AppControlNetworkService, IPSEntry,
   AppControlProfile, IPSProfile, SSLInspectionProfile,
   SDWANConfig, SDWANMember, SDWANHealthCheck, SDWANRule, SDWANZone,
   TrafficShaper, TrafficShapingPolicy,
@@ -1128,6 +1128,38 @@ function mapUserGroups(section: RawSection): UserGroup[] {
   });
 }
 
+function mapIPS(section: RawSection): IPSProfile[] {
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const entries: IPSEntry[] = (e.children['entries'] || []).map((en) => {
+      const ep = en.properties;
+      const rule = strArr(ep['rule']);
+      const exemptIps = (en.children['exempt-ip'] || []).map((x) => str(x.properties['src-ip'])).filter(Boolean);
+      return {
+        id: parseInt(en.name, 10) || 0,
+        type: rule.length > 0 ? 'signature' : 'filter',
+        action: str(ep['action'], 'default') as IPSEntry['action'],
+        status: str(ep['status'], 'default') as IPSEntry['status'],
+        logPacket: bool(ep['log-packet']),
+        severity: strArr(ep['severity']),
+        rule,
+        exemptIps,
+        location: strArr(ep['location']),
+        protocol: strArr(ep['protocol']),
+        os: strArr(ep['os']),
+        application: strArr(ep['application']),
+      };
+    });
+    return {
+      name: e.name,
+      comment: str(p['comment']),
+      blockMaliciousUrl: bool(p['block-malicious-url']),
+      scanBotnetConnections: str(p['scan-botnet-connections'], 'disable') as IPSProfile['scanBotnetConnections'],
+      entries,
+    };
+  });
+}
+
 function mapAppControl(section: RawSection): AppControlProfile[] {
   return section.entries.map((e) => {
     const p = e.properties;
@@ -1581,6 +1613,9 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const appList = sections.get('application list');
   if (appList) config.securityProfiles.applicationControl = mapAppControl(appList);
+
+  const ipsSensor = sections.get('ips sensor');
+  if (ipsSensor) config.securityProfiles.ips = mapIPS(ipsSensor);
 
   const ftgdLocalCat = sections.get('webfilter ftgd-local-cat');
   if (ftgdLocalCat) config.securityProfiles.ftgdLocalCategories = mapFtgdLocalCat(ftgdLocalCat);

@@ -955,6 +955,44 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- IPS Sensors ---
+  if (config.securityProfiles.ips.length > 0) {
+    const actMap: Record<string, string> = { pass: 'pass', block: 'block', reset: 'reset', monitor: 'pass', quarantine: 'block' };
+    out += 'config ips sensor\n';
+    for (const s of config.securityProfiles.ips) {
+      out += line(1, `edit ${q(s.name)}`);
+      out += setVal(2, 'comment', s.comment);
+      if (s.blockMaliciousUrl) out += setVal(2, 'block-malicious-url', 'enable');
+      if (s.scanBotnetConnections !== 'disable') out += setVal(2, 'scan-botnet-connections', s.scanBotnetConnections);
+      out += line(2, 'config entries');
+      for (const en of s.entries) {
+        out += line(3, `edit ${en.id}`);
+        if (en.type === 'signature' && en.rule.length) out += setArr(4, 'rule', en.rule);
+        if (en.location.length) out += setArr(4, 'location', en.location);
+        if (en.severity.length) out += setArr(4, 'severity', en.severity);
+        if (en.protocol.length) out += setArr(4, 'protocol', en.protocol);
+        if (en.os.length) out += setArr(4, 'os', en.os);
+        if (en.application.length) out += setArr(4, 'application', en.application);
+        if (en.action !== 'default') out += setVal(4, 'action', actMap[en.action] || en.action);
+        if (en.status !== 'default') out += setVal(4, 'status', en.status);
+        if (en.logPacket) out += setVal(4, 'log-packet', 'enable');
+        if (en.exemptIps.length) {
+          out += line(4, 'config exempt-ip');
+          en.exemptIps.forEach((ip, i) => {
+            out += line(5, `edit ${i + 1}`);
+            out += setVal(6, 'src-ip', ip);
+            out += line(5, 'next');
+          });
+          out += line(4, 'end');
+        }
+        out += line(3, 'next');
+      }
+      out += line(2, 'end');
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   // --- Antivirus Profiles ---
   if (config.securityProfiles.antivirus.length > 0) {
     out += 'config antivirus profile\n';

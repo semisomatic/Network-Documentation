@@ -762,30 +762,28 @@ export interface AppControlProfile {
   options: string[];         // raw tokens (round-trip)
 }
 
+export interface IPSEntry {
+  id: number;
+  type: 'filter' | 'signature';
+  action: 'default' | 'pass' | 'monitor' | 'block' | 'reset' | 'quarantine';
+  status: 'default' | 'enable' | 'disable';
+  logPacket: boolean;
+  severity: string[];        // info, low, medium, high, critical (the severity bars)
+  rule: string[];            // signature type: signature ids/names
+  exemptIps: string[];
+  // preserved filter dimensions (round-tripped, not edited in the UI)
+  location: string[];
+  protocol: string[];
+  os: string[];
+  application: string[];
+}
+
 export interface IPSProfile {
   name: string;
   comment: string;
-  entries: Array<{
-    id: number;
-    rule: string[];
-    location: string[];
-    severity: string[];
-    protocol: string[];
-    os: string[];
-    application: string[];
-    status: 'enable' | 'disable';
-    action: 'pass' | 'block' | 'reset' | 'default';
-    log: boolean;
-    logPacket: boolean;
-    quarantine: 'none' | 'attacker';
-    quarantineDuration: number;
-    rateCount: number;
-    rateDuration: number;
-    rateMode: 'periodical' | 'continuous';
-    rateTrack: 'none' | 'src-ip' | 'dest-ip' | 'dhcp-client-mac' | 'dns-domain';
-  }>;
   blockMaliciousUrl: boolean;
   scanBotnetConnections: 'disable' | 'block' | 'monitor';
+  entries: IPSEntry[];
 }
 
 export interface SSLInspectionProfile {
