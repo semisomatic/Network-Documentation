@@ -1,49 +1,27 @@
 import React, { useState } from 'react';
 import DataTable, { Column } from '../shared/DataTable';
-import EditModal, { FieldDef } from '../shared/EditModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
-import StatusBadge from '../shared/StatusBadge';
+import SSLInspectionEditor from './SSLInspectionEditor';
 import { useProjectStore } from '../../store/projectStore';
-import type { SSLInspectionProfile } from '../../types/fortigate';
+import type { SSLInspectionProfile, SSLProtoBlock } from '../../types/fortigate';
 
 const PATH = 'securityProfiles.sslInspection';
 
+const emptyBlock = (): SSLProtoBlock => ({ status: 'disable', ports: '', quic: '', unsupportedSslVersion: '', expiredCert: '', revokedCert: '', certValidationFailure: '' });
+
 const defaultProfile: SSLInspectionProfile = {
-  name: '', comment: '', inspectionMode: 'certificate-inspection',
-  serverCert: '', serverCertMode: 're-sign', caname: '', untrustedCaname: '',
-  mitmMode: 'disable', allowInvalidServerCert: false,
-  untrustedServerCertAction: 'allow', sniServerCertCheck: false,
-  https: { status: 'certificate-inspection', ports: '443' },
-  ftps: { status: 'certificate-inspection', ports: '990' },
-  imaps: { status: 'certificate-inspection', ports: '993' },
-  pop3s: { status: 'certificate-inspection', ports: '995' },
-  smtps: { status: 'certificate-inspection', ports: '465' },
-  ssh: { status: 'deep-inspection', ports: '22' },
-  exemptedAddresses: [], whitelistedAddresses: [],
+  name: '', comment: '', caCert: 'Fortinet_CA_SSL', serverCertMode: '',
+  inspectAll: '', sslExpiredCert: 'block', sslRevokedCert: 'block', sslCertValidationFailure: 'block',
+  https: { ...emptyBlock(), status: 'deep-inspection', ports: '443', quic: 'inspect' },
+  ftps: { ...emptyBlock(), ports: '990' }, imaps: { ...emptyBlock(), ports: '993' },
+  pop3s: { ...emptyBlock(), ports: '995' }, smtps: { ...emptyBlock(), ports: '465' },
+  dot: { ...emptyBlock(), quic: 'inspect' }, ssh: { ...emptyBlock(), status: 'deep-inspection', ports: '22' },
+  sslExempt: [], logSslAnomalies: true,
 };
 
-const fields: FieldDef[] = [
-  { key: 'name', label: 'Name', type: 'text', required: true, group: 'General' },
-  { key: 'comment', label: 'Comment', type: 'textarea', group: 'General', width: 'full' },
-  { key: 'inspectionMode', label: 'Inspection Mode', type: 'select', group: 'General', options: [
-    { value: 'certificate-inspection', label: 'Certificate Inspection' },
-    { value: 'deep-inspection', label: 'Deep Inspection' },
-  ]},
-  { key: 'serverCertMode', label: 'Server Cert Mode', type: 'select', group: 'Certificates', options: [
-    { value: 're-sign', label: 'Re-sign' }, { value: 'replace', label: 'Replace' },
-  ]},
-  { key: 'caname', label: 'CA Certificate', type: 'text', group: 'Certificates' },
-  { key: 'untrustedCaname', label: 'Untrusted CA Certificate', type: 'text', group: 'Certificates' },
-  { key: 'serverCert', label: 'Server Certificate', type: 'text', group: 'Certificates' },
-  { key: 'mitmMode', label: 'MITM Mode', type: 'select', group: 'Advanced', options: [
-    { value: 'enable', label: 'Enable' }, { value: 'disable', label: 'Disable' },
-  ]},
-  { key: 'allowInvalidServerCert', label: 'Allow Invalid Server Cert', type: 'checkbox', group: 'Advanced' },
-  { key: 'untrustedServerCertAction', label: 'Untrusted Server Cert Action', type: 'select', group: 'Advanced', options: [
-    { value: 'allow', label: 'Allow' }, { value: 'block', label: 'Block' }, { value: 'ignore', label: 'Ignore' },
-  ]},
-  { key: 'sniServerCertCheck', label: 'SNI Server Cert Check', type: 'checkbox', group: 'Advanced' },
-];
+const methodLabel = (p: SSLInspectionProfile) => p.inspectAll
+  ? (p.inspectAll === 'deep-inspection' ? 'Full (all ports)' : 'Certificate (all ports)')
+  : (p.https.status === 'deep-inspection' ? 'Full SSL Inspection' : p.https.status === 'certificate-inspection' ? 'Certificate Inspection' : 'Disabled');
 
 export default function SSLInspection() {
   const config = useProjectStore((s) => s.project.config);
@@ -51,43 +29,50 @@ export default function SSLInspection() {
   const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const data = config.securityProfiles.sslInspection;
 
-  const [editing, setEditing] = useState<{ item: SSLInspectionProfile; index: number } | null>(null);
-  const [isNew, setIsNew] = useState(false);
+  const [editorState, setEditorState] = useState<{ item: SSLInspectionProfile; index: number; isNew: boolean } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
 
   const columns: Column<SSLInspectionProfile>[] = [
     { key: 'name', label: 'Name' },
-    { key: 'inspectionMode', label: 'Inspection Mode', render: (p) => <StatusBadge value={p.inspectionMode} /> },
-    { key: 'serverCertMode', label: 'Server Cert Mode', render: (p) => <StatusBadge value={p.serverCertMode} /> },
-    { key: 'caname', label: 'CA Name' },
+    { key: 'method', label: 'Inspection', render: methodLabel },
+    { key: 'caCert', label: 'CA Certificate', render: (p) => p.caCert || '-' },
+    { key: 'sshStatus', label: 'SSH Deep Scan', render: (p) => p.ssh.status === 'deep-inspection' ? 'Yes' : 'No' },
+    { key: 'sslExempt', label: 'Exemptions', render: (p) => p.sslExempt.length || '-' },
+    { key: 'comment', label: 'Comment' },
   ];
 
-  const handleSave = () => {
-    if (!editing) return;
-    if (isNew) addItem(PATH, editing.item);
-    else updateItem(PATH, editing.index, editing.item);
-    setEditing(null);
+  const saveProfile = (item: SSLInspectionProfile) => {
+    if (!editorState) return;
+    if (editorState.isNew) addItem(PATH, item);
+    else updateItem(PATH, editorState.index, item);
+    setEditorState(null);
   };
+
+  if (editorState) {
+    return (
+      <SSLInspectionEditor
+        initial={editorState.item}
+        isNew={editorState.isNew}
+        onSave={saveProfile}
+        onCancel={() => setEditorState(null)}
+      />
+    );
+  }
 
   return (
     <>
-      <DataTable title="SSL/SSH Inspection Profiles" columns={columns} data={data}
+      <DataTable title="SSL/SSH Inspection" columns={columns} data={data}
         getRowKey={(item) => item.name}
         highlights={highlights}
         onHighlight={(key, color) => setHighlight(PATH, key, color)}
-        onAdd={() => { setEditing({ item: { ...defaultProfile }, index: -1 }); setIsNew(true); }}
-        onEdit={(item, index) => { setEditing({ item: { ...item }, index }); setIsNew(false); }}
+        onAdd={() => setEditorState({ item: { ...defaultProfile }, index: -1, isNew: true })}
+        onEdit={(item, index) => setEditorState({ item: { ...item }, index, isNew: false })}
         onDelete={(_, index) => setDeleting(index)}
-        onClone={(item) => { setEditing({ item: { ...item, name: item.name + '_copy' }, index: -1 }); setIsNew(true); }}
+        onClone={(item) => setEditorState({ item: { ...item, name: item.name + '_copy' }, index: -1, isNew: true })}
         onReorder={(from, to) => reorderItems(PATH, from, to)}
       />
-      {editing && (
-        <EditModal title="SSL/SSH Inspection Profile" fields={fields} values={editing.item} isNew={isNew}
-          onChange={(key, val) => setEditing({ ...editing, item: { ...editing.item, [key]: val } })}
-          onSave={handleSave} onCancel={() => setEditing(null)} />
-      )}
       {deleting !== null && (
-        <ConfirmDialog title="Delete SSL/SSH Inspection Profile" message={`Delete SSL inspection profile "${data[deleting]?.name}"?`}
+        <ConfirmDialog title="Delete SSL/SSH Inspection Profile" message={`Delete SSL/SSH inspection profile "${data[deleting]?.name}"?`}
           onConfirm={() => { removeItem(PATH, deleting); setDeleting(null); }} onCancel={() => setDeleting(null)} />
       )}
     </>

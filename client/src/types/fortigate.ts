@@ -786,26 +786,44 @@ export interface IPSProfile {
   entries: IPSEntry[];
 }
 
+// One per-protocol inspection block (config https / ftps / ... / ssh / dot)
+export interface SSLProtoBlock {
+  status: string;                  // disable | certificate-inspection | deep-inspection
+  ports: string;
+  quic: string;                    // '' | inspect | bypass | block  (https=HTTP/3, dot=DNS over QUIC)
+  unsupportedSslVersion: string;
+  expiredCert: string;             // '' | allow | block | ignore
+  revokedCert: string;
+  certValidationFailure: string;
+}
+
+export interface SSLExemptEntry {
+  type: string;                    // wildcard-fqdn | fortiguard-category | address | ...
+  wildcardFqdn: string;
+  fortiguardCategory: number;
+  address: string;
+}
+
 export interface SSLInspectionProfile {
   name: string;
   comment: string;
-  inspectionMode: 'certificate-inspection' | 'deep-inspection';
-  serverCert: string;
-  serverCertMode: 're-sign' | 'replace';
-  caname: string;
-  untrustedCaname: string;
-  mitmMode: 'enable' | 'disable';
-  allowInvalidServerCert: boolean;
-  untrustedServerCertAction: 'allow' | 'block' | 'ignore';
-  sniServerCertCheck: boolean;
-  https: { status: 'certificate-inspection' | 'deep-inspection' | 'disable'; ports: string };
-  ftps: { status: 'certificate-inspection' | 'deep-inspection' | 'disable'; ports: string };
-  imaps: { status: 'certificate-inspection' | 'deep-inspection' | 'disable'; ports: string };
-  pop3s: { status: 'certificate-inspection' | 'deep-inspection' | 'disable'; ports: string };
-  smtps: { status: 'certificate-inspection' | 'deep-inspection' | 'disable'; ports: string };
-  ssh: { status: 'deep-inspection' | 'disable'; ports: string };
-  exemptedAddresses: string[];
-  whitelistedAddresses: string[];
+  caCert: string;                  // server ca certificate
+  serverCertMode: string;
+  // config ssl (global client-side settings when "Inspect all ports" is on)
+  inspectAll: string;              // '' | certificate-inspection | deep-inspection
+  sslExpiredCert: string;
+  sslRevokedCert: string;
+  sslCertValidationFailure: string;
+  // per-protocol blocks
+  https: SSLProtoBlock;
+  ftps: SSLProtoBlock;
+  imaps: SSLProtoBlock;
+  pop3s: SSLProtoBlock;
+  smtps: SSLProtoBlock;
+  dot: SSLProtoBlock;              // DNS over TLS
+  ssh: SSLProtoBlock;
+  sslExempt: SSLExemptEntry[];
+  logSslAnomalies: boolean;
 }
 
 // --- SD-WAN ---

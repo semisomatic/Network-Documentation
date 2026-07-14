@@ -18,6 +18,7 @@ import {
   VPNPhase1, VPNPhase2, SSLVPNSettings, SSLVPNPortal, SSLVPNAuthRule,
   AntivirusProfile, WebFilterProfile, DNSFilterProfile, FtgdLocalCategory,
   AppControlOverride, AppControlNetworkService, IPSEntry,
+  SSLProtoBlock, SSLExemptEntry,
   AppControlProfile, IPSProfile, SSLInspectionProfile,
   SDWANConfig, SDWANMember, SDWANHealthCheck, SDWANRule, SDWANZone,
   TrafficShaper, TrafficShapingPolicy,
@@ -1128,6 +1129,45 @@ function mapUserGroups(section: RawSection): UserGroup[] {
   });
 }
 
+function mapSSLInspection(section: RawSection): SSLInspectionProfile[] {
+  const block = (p: Record<string, any>, prefix: string): SSLProtoBlock => ({
+    status: str(p[`${prefix}.status`]),
+    ports: str(p[`${prefix}.ports`]),
+    quic: str(p[`${prefix}.quic`]),
+    unsupportedSslVersion: str(p[`${prefix}.unsupported-ssl-version`]),
+    expiredCert: str(p[`${prefix}.expired-server-cert`]),
+    revokedCert: str(p[`${prefix}.revoked-server-cert`]),
+    certValidationFailure: str(p[`${prefix}.cert-validation-failure`]),
+  });
+  return section.entries.map((e) => {
+    const p = e.properties;
+    const sslExempt: SSLExemptEntry[] = (e.children['ssl-exempt'] || []).map((x) => {
+      const xp = x.properties;
+      const fc = xp['fortiguard-category'];
+      return {
+        type: str(xp['type']) || (fc !== undefined ? 'fortiguard-category' : 'address'),
+        wildcardFqdn: str(xp['wildcard-fqdn']),
+        fortiguardCategory: num(fc),
+        address: str(xp['address']),
+      };
+    });
+    return {
+      name: e.name,
+      comment: str(p['comment']),
+      caCert: str(p['caname']) || str(p['server-cert']),
+      serverCertMode: str(p['server-cert-mode']),
+      inspectAll: str(p['ssl.inspect-all']),
+      sslExpiredCert: str(p['ssl.expired-server-cert']),
+      sslRevokedCert: str(p['ssl.revoked-server-cert']),
+      sslCertValidationFailure: str(p['ssl.cert-validation-failure']),
+      https: block(p, 'https'), ftps: block(p, 'ftps'), imaps: block(p, 'imaps'),
+      pop3s: block(p, 'pop3s'), smtps: block(p, 'smtps'), dot: block(p, 'dot'), ssh: block(p, 'ssh'),
+      sslExempt,
+      logSslAnomalies: bool(p['ssl-anomaly-log'], true),
+    };
+  });
+}
+
 function mapIPS(section: RawSection): IPSProfile[] {
   return section.entries.map((e) => {
     const p = e.properties;
@@ -1616,6 +1656,9 @@ export function parseFortiConfig(text: string): FortigateConfig {
 
   const ipsSensor = sections.get('ips sensor');
   if (ipsSensor) config.securityProfiles.ips = mapIPS(ipsSensor);
+
+  const sslProfile = sections.get('firewall ssl-ssh-profile');
+  if (sslProfile) config.securityProfiles.sslInspection = mapSSLInspection(sslProfile);
 
   const ftgdLocalCat = sections.get('webfilter ftgd-local-cat');
   if (ftgdLocalCat) config.securityProfiles.ftgdLocalCategories = mapFtgdLocalCat(ftgdLocalCat);

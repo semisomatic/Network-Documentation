@@ -955,6 +955,55 @@ export function exportFortiConfig(config: FortigateConfig): string {
     out += 'end\n\n';
   }
 
+  // --- SSL/SSH Inspection Profiles ---
+  if (config.securityProfiles.sslInspection.length > 0) {
+    out += 'config firewall ssl-ssh-profile\n';
+    for (const s of config.securityProfiles.sslInspection) {
+      out += line(1, `edit ${q(s.name)}`);
+      out += setVal(2, 'comment', s.comment);
+      if (s.caCert) out += setVal(2, 'caname', s.caCert);
+      if (s.serverCertMode) out += setVal(2, 'server-cert-mode', s.serverCertMode);
+      const emitBlock = (name: string, b: typeof s.https) => {
+        if (![b.status, b.ports, b.quic, b.unsupportedSslVersion, b.expiredCert, b.revokedCert, b.certValidationFailure].some(Boolean)) return;
+        out += line(2, `config ${name}`);
+        if (b.ports) out += setVal(3, 'ports', b.ports);
+        if (b.status) out += setVal(3, 'status', b.status);
+        if (b.quic) out += setVal(3, 'quic', b.quic);
+        if (b.unsupportedSslVersion) out += setVal(3, 'unsupported-ssl-version', b.unsupportedSslVersion);
+        if (b.expiredCert) out += setVal(3, 'expired-server-cert', b.expiredCert);
+        if (b.revokedCert) out += setVal(3, 'revoked-server-cert', b.revokedCert);
+        if (b.certValidationFailure) out += setVal(3, 'cert-validation-failure', b.certValidationFailure);
+        out += line(2, 'end');
+      };
+      // config ssl (global) — emit before per-protocol to match FortiOS ordering
+      if ([s.inspectAll, s.sslExpiredCert, s.sslRevokedCert, s.sslCertValidationFailure].some(Boolean)) {
+        out += line(2, 'config ssl');
+        if (s.inspectAll) out += setVal(3, 'inspect-all', s.inspectAll);
+        if (s.sslExpiredCert) out += setVal(3, 'expired-server-cert', s.sslExpiredCert);
+        if (s.sslRevokedCert) out += setVal(3, 'revoked-server-cert', s.sslRevokedCert);
+        if (s.sslCertValidationFailure) out += setVal(3, 'cert-validation-failure', s.sslCertValidationFailure);
+        out += line(2, 'end');
+      }
+      emitBlock('https', s.https); emitBlock('ftps', s.ftps); emitBlock('imaps', s.imaps);
+      emitBlock('pop3s', s.pop3s); emitBlock('smtps', s.smtps); emitBlock('ssh', s.ssh); emitBlock('dot', s.dot);
+      if (s.sslExempt.length > 0) {
+        out += line(2, 'config ssl-exempt');
+        s.sslExempt.forEach((x, i) => {
+          out += line(3, `edit ${i + 1}`);
+          if (x.type) out += setVal(4, 'type', x.type);
+          if (x.wildcardFqdn) out += setVal(4, 'wildcard-fqdn', x.wildcardFqdn);
+          if (x.fortiguardCategory) out += setVal(4, 'fortiguard-category', x.fortiguardCategory);
+          if (x.address) out += setVal(4, 'address', x.address);
+          out += line(3, 'next');
+        });
+        out += line(2, 'end');
+      }
+      if (!s.logSslAnomalies) out += setVal(2, 'ssl-anomaly-log', 'disable');
+      out += line(1, 'next');
+    }
+    out += 'end\n\n';
+  }
+
   // --- IPS Sensors ---
   if (config.securityProfiles.ips.length > 0) {
     const actMap: Record<string, string> = { pass: 'pass', block: 'block', reset: 'reset', monitor: 'pass', quarantine: 'block' };
