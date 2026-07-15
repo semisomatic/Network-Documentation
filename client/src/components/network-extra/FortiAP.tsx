@@ -70,7 +70,7 @@ export default function FortiAP() {
     { key: 'name', label: 'Name' },
     { key: 'ssid', label: 'SSID' },
     { key: 'securityMode', label: 'Security' },
-    { key: 'traffic', label: 'Traffic', width: '80px', render: (v) => v.localBridging ? 'Bridge' : 'Tunnel' },
+    { key: 'traffic', label: 'Traffic', width: '80px', render: (v) => v.trafficMode.charAt(0).toUpperCase() + v.trafficMode.slice(1) },
     { key: 'vlanid', label: 'VLAN', width: '70px', render: (v) => v.vlanid ? String(v.vlanid) : '-' },
     { key: 'broadcast', label: 'Broadcast', width: '80px', render: (v) => v.broadcast ? 'Yes' : 'No' },
     { key: 'comment', label: 'Comment' },

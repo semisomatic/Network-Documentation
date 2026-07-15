@@ -1064,26 +1064,62 @@ export interface FSSOServer {
 export interface WirelessVAP {
   name: string;
   ssid: string;
-  securityMode: 'open' | 'wpa2-personal' | 'wpa2-enterprise' | 'wpa3-sae' | 'wpa3-enterprise' | 'captive-portal';
-  passphrase: string;
-  authServer: string;
-  vlanid: number;
-  broadcast: boolean;
-  schedule: string;
-  maxClients: number;
-  macFilter: boolean;
-  localBridging: boolean;
   alias: string;
-  dot11k: boolean;             // 802.11k radio resource measurement (default enable)
-  dot11v: boolean;             // 802.11v BSS transition (default enable)
-  rates11a: string[];          // set rates-11a
-  rates11bg: string[];         // set rates-11bg
-  rates11acMcsMap: string;     // set rates-11ac-mcs-map
-  rates11axMcsMap: string;     // set rates-11ax-mcs-map
+  trafficMode: 'tunnel' | 'bridge' | 'mesh';   // local-bridging / mesh-backhaul
+  vrf: number;
+  vlanid: number;
+  // Address (tunnel mode)
+  addressingMode: 'manual' | 'ipam' | 'sniffer';
+  ip: string;                  // "10.0.0.1 255.255.255.0"
+  allowaccess: string[];       // administrative access
+  // Network
+  deviceDetection: boolean;    // device-identification (default enable)
+  explicitWebProxy: boolean;
+  // WiFi settings
+  broadcast: boolean;          // broadcast-ssid (default enable)
+  maxClients: number;          // 0 = client limit off
+  beaconAdvertising: string[]; // name / model / serial-number
+  // Security
+  securityMode: string;        // raw FortiOS `set security` value
+  captivePortal: boolean;
+  passphrase: string;
+  pskMode: 'single' | 'multiple';
+  authServer: string;          // auth (RADIUS) for enterprise modes
+  // MAC filtering
+  macFilter: boolean;
+  macFilterPolicy: 'disable' | 'allow' | 'deny';
+  radiusMacAuth: boolean;
+  // Security profiles (per-SSID UTM)
+  utmStatus: boolean;
+  avProfile: string;
+  webfilterProfile: string;
+  applicationList: string;
+  ipsSensor: string;
+  scanBotnet: 'disable' | 'block' | 'monitor';
+  utmLog: boolean;
+  // Additional settings
+  schedule: string;
+  blockIntraVap: boolean;      // intra-vap-privacy
+  broadcastSuppression: string[];
+  quarantine: boolean;
+  vlanPooling: string;         // '' = disable, else wtp-group/round-robin/hash
+  nac: boolean;
+  nacProfile: string;
+  localStandalone: boolean;    // bridge mode
+  localAuthentication: boolean;
+  // Roaming / steering
+  dot11k: boolean;             // 802.11k (default enable)
+  dot11v: boolean;             // 802.11v (default enable)
   stickyClientRemove: boolean;
   stickyClient5g: string;      // threshold (dBm), e.g. "-72"
   stickyClient2g: string;
-  beaconAdvertising: string[]; // name / model / serial-number
+  // Data rates
+  rates11a: string[];
+  rates11bg: string[];
+  rates11acMcsMap: string;
+  rates11axMcsMap: string;
+  // Misc
+  status: 'enable' | 'disable';
   comment: string;
 }
 
@@ -1150,12 +1186,19 @@ export function createDefaultRadio(mode: WirelessRadio['mode'] = 'ap'): Wireless
 
 export function createDefaultVAP(): WirelessVAP {
   return {
-    name: '', ssid: '', securityMode: 'wpa2-personal', passphrase: '', authServer: '',
-    vlanid: 0, broadcast: true, schedule: 'always', maxClients: 0, macFilter: false,
-    localBridging: false, alias: '', dot11k: true, dot11v: true,
+    name: '', ssid: '', alias: '', trafficMode: 'tunnel', vrf: 0, vlanid: 0,
+    addressingMode: 'manual', ip: '', allowaccess: [],
+    deviceDetection: true, explicitWebProxy: false,
+    broadcast: true, maxClients: 0, beaconAdvertising: [],
+    securityMode: 'wpa2-only-personal', captivePortal: false, passphrase: '', pskMode: 'single', authServer: '',
+    macFilter: false, macFilterPolicy: 'disable', radiusMacAuth: false,
+    utmStatus: false, avProfile: '', webfilterProfile: '', applicationList: '', ipsSensor: '',
+    scanBotnet: 'monitor', utmLog: true,
+    schedule: 'always', blockIntraVap: false, broadcastSuppression: [], quarantine: false,
+    vlanPooling: '', nac: false, nacProfile: '', localStandalone: false, localAuthentication: false,
+    dot11k: true, dot11v: true, stickyClientRemove: false, stickyClient5g: '', stickyClient2g: '',
     rates11a: [], rates11bg: [], rates11acMcsMap: '', rates11axMcsMap: '',
-    stickyClientRemove: false, stickyClient5g: '', stickyClient2g: '',
-    beaconAdvertising: [], comment: '',
+    status: 'enable', comment: '',
   };
 }
 
@@ -1354,10 +1397,19 @@ export function migrateProject(raw: any): FortigateProject {
       project.config.wireless = createDefaultConfig().wireless;
     }
     // Migrate wireless VAPs / AP profiles to the expanded (multi-radio) model
+    const SEC_MODE_MAP: Record<string, string> = {
+      'wpa2-personal': 'wpa2-only-personal', 'wpa2-enterprise': 'wpa2-only-enterprise',
+      'wpa3-enterprise': 'wpa3-only-enterprise',
+    };
     for (const v of project.config.wireless.vaps || []) {
+      const anyV = v as any;
+      // trafficMode from legacy localBridging
+      if (anyV.trafficMode === undefined) anyV.trafficMode = anyV.localBridging ? 'bridge' : 'tunnel';
+      delete anyV.localBridging;
+      if (SEC_MODE_MAP[anyV.securityMode]) anyV.securityMode = SEC_MODE_MAP[anyV.securityMode];
       const dv = createDefaultVAP();
       for (const k of Object.keys(dv) as (keyof WirelessVAP)[]) {
-        if ((v as any)[k] === undefined) (v as any)[k] = (dv as any)[k];
+        if (anyV[k] === undefined) anyV[k] = (dv as any)[k];
       }
     }
     for (const p of project.config.wireless.wtpProfiles || []) {

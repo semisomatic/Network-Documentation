@@ -1323,29 +1323,60 @@ export function exportFortiConfig(config: FortigateConfig): string {
     for (const v of config.wireless.vaps) {
       out += line(1, `edit ${q(v.name)}`);
       out += setVal(2, 'ssid', v.ssid);
+      if (v.alias) out += setVal(2, 'alias', v.alias);
+      if (v.trafficMode === 'bridge') out += setVal(2, 'local-bridging', true);
+      if (v.trafficMode === 'mesh') out += setVal(2, 'mesh-backhaul', true);
+      if (v.vrf) out += setVal(2, 'vrf', v.vrf);
       if (v.securityMode !== 'open') out += setVal(2, 'security', v.securityMode);
-      if (!v.dot11k) out += setVal(2, '80211k', 'disable');
-      if (!v.dot11v) out += setVal(2, '80211v', 'disable');
       // Passphrase: preserve the "ENC <blob>" form verbatim (unquoted keyword).
       if (v.passphrase) {
         if (/^ENC\s/.test(v.passphrase)) out += line(2, `set passphrase ${v.passphrase}`);
         else out += setVal(2, 'passphrase', v.passphrase);
       }
-      if (v.localBridging) out += setVal(2, 'local-bridging', true);
       if (v.authServer) out += setVal(2, 'auth', v.authServer);
+      if (v.addressingMode === 'manual' && v.ip) out += setVal(2, 'ip', v.ip);
+      if (v.allowaccess.length) out += setArr(2, 'allowaccess', v.allowaccess);
+      if (!v.deviceDetection) out += setVal(2, 'device-identification', 'disable');
+      if (v.explicitWebProxy) out += setVal(2, 'explicit-web-proxy', true);
+      if (!v.broadcast) out += setVal(2, 'broadcast-ssid', 'disable');
+      if (!v.dot11k) out += setVal(2, '80211k', 'disable');
+      if (!v.dot11v) out += setVal(2, '80211v', 'disable');
       out += setVal(2, 'schedule', v.schedule);
       if (v.vlanid) out += setVal(2, 'vlanid', v.vlanid);
-      if (v.alias) out += setVal(2, 'alias', v.alias);
       if (v.maxClients) out += setVal(2, 'max-clients', v.maxClients);
+      if (v.blockIntraVap) out += setVal(2, 'intra-vap-privacy', true);
+      if (v.broadcastSuppression.length) out += setArr(2, 'broadcast-suppression', v.broadcastSuppression);
+      if (v.beaconAdvertising.length) out += setArr(2, 'beacon-advertising', v.beaconAdvertising);
+      // MAC filtering
       if (v.macFilter) out += setVal(2, 'mac-filter', true);
+      if (v.macFilterPolicy !== 'disable') out += setVal(2, 'mac-filter-policy-other', v.macFilterPolicy);
+      if (v.radiusMacAuth) out += setVal(2, 'radius-mac-auth', true);
+      // Security profiles (per-SSID UTM)
+      if (v.utmStatus) {
+        out += setVal(2, 'utm-status', true);
+        if (v.avProfile) out += setVal(2, 'av-profile', v.avProfile);
+        if (v.webfilterProfile) out += setVal(2, 'webfilter-profile', v.webfilterProfile);
+        if (v.applicationList) out += setVal(2, 'application-list', v.applicationList);
+        if (v.ipsSensor) out += setVal(2, 'ips-sensor', v.ipsSensor);
+        if (v.scanBotnet !== 'disable') out += setVal(2, 'scan-botnet-connections', v.scanBotnet);
+        if (!v.utmLog) out += setVal(2, 'utm-log', 'disable');
+      }
+      // Additional
+      if (v.quarantine) out += setVal(2, 'quarantine', true);
+      if (v.vlanPooling) out += setVal(2, 'vlan-pooling', v.vlanPooling);
+      if (v.nac) { out += setVal(2, 'nac', true); if (v.nacProfile) out += setVal(2, 'nac-profile', v.nacProfile); }
+      if (v.localStandalone) out += setVal(2, 'local-standalone', true);
+      if (v.localAuthentication) out += setVal(2, 'local-authentication', true);
+      // Data rates
       if (v.rates11a.length) out += setArr(2, 'rates-11a', v.rates11a);
       if (v.rates11bg.length) out += setArr(2, 'rates-11bg', v.rates11bg);
       if (v.rates11acMcsMap) out += setVal(2, 'rates-11ac-mcs-map', v.rates11acMcsMap);
       if (v.rates11axMcsMap) out += setVal(2, 'rates-11ax-mcs-map', v.rates11axMcsMap);
+      // Steering
       if (v.stickyClientRemove) out += setVal(2, 'sticky-client-remove', true);
       if (v.stickyClient5g) out += setVal(2, 'sticky-client-threshold-5g', v.stickyClient5g);
       if (v.stickyClient2g) out += setVal(2, 'sticky-client-threshold-2g', v.stickyClient2g);
-      if (v.beaconAdvertising.length) out += setArr(2, 'beacon-advertising', v.beaconAdvertising);
+      if (v.status === 'disable') out += setVal(2, 'status', 'disable');
       out += setVal(2, 'comment', v.comment);
       out += line(1, 'next');
     }
