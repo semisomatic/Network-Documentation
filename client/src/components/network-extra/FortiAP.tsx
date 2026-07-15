@@ -3,27 +3,33 @@ import DataTable, { Column } from '../shared/DataTable';
 import EditModal, { FieldDef } from '../shared/EditModal';
 import ConfirmDialog from '../shared/ConfirmDialog';
 import StatusBadge from '../shared/StatusBadge';
+import VAPEditor from './VAPEditor';
+import WTPProfileEditor from './WTPProfileEditor';
 import { useProjectStore } from '../../store/projectStore';
-import type { WirelessVAP, WirelessWTPProfile, WirelessWTP } from '../../types/fortigate';
+import {
+  createDefaultVAP, createDefaultWTPProfile,
+  type WirelessVAP, type WirelessWTPProfile, type WirelessWTP, type WirelessRadio,
+} from '../../types/fortigate';
 
 const VAP_PATH = 'wireless.vaps';
 const PROFILE_PATH = 'wireless.wtpProfiles';
 const WTP_PATH = 'wireless.wtps';
 
-const defaultVAP: WirelessVAP = {
-  name: '', ssid: '', securityMode: 'wpa2-personal', passphrase: '', authServer: '',
-  vlanid: 0, broadcast: true, schedule: 'always', maxClients: 0, macFilter: false, comment: '',
-};
-
-const defaultProfile: WirelessWTPProfile = {
-  name: '', platform: '', radio1Band: '802.11ax', radio1Channels: [], radio1Power: 100,
-  radio1VapAll: true, radio1Vaps: [], radio2Band: '802.11ax', radio2Channels: [], radio2Power: 100,
-  radio2VapAll: true, radio2Vaps: [], comment: '',
-};
-
 const defaultWTP: WirelessWTP = {
   id: '', name: '', wtpProfile: '', admin: 'enable', location: '', comment: '',
 };
+
+// Compact summary of a radio for the profile list.
+function radioSummary(r: WirelessRadio): string {
+  if (r.mode === 'disabled') return 'Disabled';
+  if (r.mode === 'monitor') return 'Monitor';
+  if (r.mode === 'sniffer') return 'Sniffer';
+  const is2G = r.band.some((b) => b.includes('2G') || b === '802.11b' || b === '802.11g');
+  const gen = r.band.some((b) => b.includes('ax')) ? 'ax' : r.band.some((b) => b.includes('ac')) ? 'ac' : r.band.some((b) => b.includes('n')) ? 'n' : '';
+  const bandLabel = r.band.length ? `${is2G ? '2.4G' : '5G'}${gen ? ` 802.11${gen}` : ''}` : 'AP';
+  const vapCount = r.vaps.length;
+  return `${bandLabel}${vapCount ? ` · ${vapCount} SSID${vapCount > 1 ? 's' : ''}` : ''}`;
+}
 
 export default function FortiAP() {
   const config = useProjectStore((s) => s.project.config);
@@ -33,12 +39,10 @@ export default function FortiAP() {
   const { addItem, updateItem, removeItem, reorderItems, setHighlight } = useProjectStore();
   const wireless = config.wireless;
 
-  const [editingVap, setEditingVap] = useState<{ item: WirelessVAP; index: number } | null>(null);
-  const [isNewVap, setIsNewVap] = useState(false);
+  const [editingVap, setEditingVap] = useState<{ item: WirelessVAP; index: number; isNew: boolean } | null>(null);
   const [deletingVap, setDeletingVap] = useState<number | null>(null);
 
-  const [editingProfile, setEditingProfile] = useState<{ item: WirelessWTPProfile; index: number } | null>(null);
-  const [isNewProfile, setIsNewProfile] = useState(false);
+  const [editingProfile, setEditingProfile] = useState<{ item: WirelessWTPProfile; index: number; isNew: boolean } | null>(null);
   const [deletingProfile, setDeletingProfile] = useState<number | null>(null);
 
   const [editingWtp, setEditingWtp] = useState<{ item: WirelessWTP; index: number } | null>(null);
@@ -47,45 +51,9 @@ export default function FortiAP() {
 
   const profileOptions = [
     { value: '', label: '-- Select --' },
-    ...wireless.wtpProfiles.map(p => ({ value: p.name, label: p.name })),
+    ...wireless.wtpProfiles.map((p) => ({ value: p.name, label: p.name })),
   ];
-
-  const vapFields: FieldDef[] = [
-    { key: 'name', label: 'Name', type: 'text', required: true, group: 'General' },
-    { key: 'ssid', label: 'SSID', type: 'text', required: true, group: 'General' },
-    { key: 'securityMode', label: 'Security', type: 'select', group: 'General', options: [
-      { value: 'open', label: 'Open' },
-      { value: 'wpa2-personal', label: 'WPA2 Personal' },
-      { value: 'wpa2-enterprise', label: 'WPA2 Enterprise' },
-      { value: 'wpa3-sae', label: 'WPA3 SAE' },
-      { value: 'wpa3-enterprise', label: 'WPA3 Enterprise' },
-      { value: 'captive-portal', label: 'Captive Portal' },
-    ]},
-    { key: 'passphrase', label: 'Passphrase', type: 'text', group: 'Security' },
-    { key: 'authServer', label: 'Auth Server', type: 'text', group: 'Security' },
-    { key: 'vlanid', label: 'VLAN ID', type: 'number', group: 'Network' },
-    { key: 'broadcast', label: 'Broadcast SSID', type: 'checkbox', group: 'Network' },
-    { key: 'maxClients', label: 'Max Clients', type: 'number', group: 'Network' },
-    { key: 'macFilter', label: 'MAC Filter', type: 'checkbox', group: 'Network' },
-    { key: 'schedule', label: 'Schedule', type: 'text', group: 'Other', defaultValue: 'always' },
-    { key: 'comment', label: 'Comment', type: 'textarea', group: 'Other', width: 'full' },
-  ];
-
-  const profileFields: FieldDef[] = [
-    { key: 'name', label: 'Name', type: 'text', required: true, group: 'General' },
-    { key: 'platform', label: 'Platform/Model', type: 'text', group: 'General', placeholder: 'FAP-231F' },
-    { key: 'radio1Band', label: 'Radio 1 Band', type: 'select', group: 'Radio 1', options: [
-      { value: '802.11ax', label: '802.11ax (Wi-Fi 6)' }, { value: '802.11ac', label: '802.11ac (Wi-Fi 5)' },
-      { value: '802.11n', label: '802.11n' }, { value: '802.11a', label: '802.11a' },
-    ]},
-    { key: 'radio1Power', label: 'Radio 1 Power (%)', type: 'number', group: 'Radio 1', defaultValue: 100 },
-    { key: 'radio2Band', label: 'Radio 2 Band', type: 'select', group: 'Radio 2', options: [
-      { value: '802.11ax', label: '802.11ax (Wi-Fi 6)' }, { value: '802.11ac', label: '802.11ac (Wi-Fi 5)' },
-      { value: '802.11n', label: '802.11n' }, { value: '802.11n,g', label: '802.11n/g' },
-    ]},
-    { key: 'radio2Power', label: 'Radio 2 Power (%)', type: 'number', group: 'Radio 2', defaultValue: 100 },
-    { key: 'comment', label: 'Comment', type: 'textarea', group: 'Other', width: 'full' },
-  ];
+  const vapNames = wireless.vaps.map((v) => v.name);
 
   const wtpFields: FieldDef[] = [
     { key: 'id', label: 'Serial / ID', type: 'text', required: true, group: 'General' },
@@ -102,6 +70,7 @@ export default function FortiAP() {
     { key: 'name', label: 'Name' },
     { key: 'ssid', label: 'SSID' },
     { key: 'securityMode', label: 'Security' },
+    { key: 'traffic', label: 'Traffic', width: '80px', render: (v) => v.localBridging ? 'Bridge' : 'Tunnel' },
     { key: 'vlanid', label: 'VLAN', width: '70px', render: (v) => v.vlanid ? String(v.vlanid) : '-' },
     { key: 'broadcast', label: 'Broadcast', width: '80px', render: (v) => v.broadcast ? 'Yes' : 'No' },
     { key: 'comment', label: 'Comment' },
@@ -109,9 +78,10 @@ export default function FortiAP() {
 
   const profileColumns: Column<WirelessWTPProfile>[] = [
     { key: 'name', label: 'Name' },
-    { key: 'platform', label: 'Platform' },
-    { key: 'radio1Band', label: 'Radio 1' },
-    { key: 'radio2Band', label: 'Radio 2' },
+    { key: 'platform', label: 'Platform', width: '90px', render: (p) => p.platform || '-' },
+    { key: 'radio1', label: 'Radio 1', render: (p) => radioSummary(p.radio1) },
+    { key: 'radio2', label: 'Radio 2', render: (p) => radioSummary(p.radio2) },
+    { key: 'radio3', label: 'Radio 3', render: (p) => radioSummary(p.radio3) },
     { key: 'comment', label: 'Comment' },
   ];
 
@@ -124,6 +94,28 @@ export default function FortiAP() {
     { key: 'comment', label: 'Comment' },
   ];
 
+  // Full-page editors take over the whole view when open.
+  if (editingVap) {
+    return (
+      <VAPEditor initial={editingVap.item} isNew={editingVap.isNew}
+        onSave={(item) => {
+          if (editingVap.isNew) addItem(VAP_PATH, item); else updateItem(VAP_PATH, editingVap.index, item);
+          setEditingVap(null);
+        }}
+        onCancel={() => setEditingVap(null)} />
+    );
+  }
+  if (editingProfile) {
+    return (
+      <WTPProfileEditor initial={editingProfile.item} isNew={editingProfile.isNew} vapNames={vapNames}
+        onSave={(item) => {
+          if (editingProfile.isNew) addItem(PROFILE_PATH, item); else updateItem(PROFILE_PATH, editingProfile.index, item);
+          setEditingProfile(null);
+        }}
+        onCancel={() => setEditingProfile(null)} />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* SSIDs / VAPs */}
@@ -131,9 +123,10 @@ export default function FortiAP() {
         getRowKey={(item) => item.name}
         highlights={vapHighlights}
         onHighlight={(key, color) => setHighlight(VAP_PATH, key, color)}
-        onAdd={() => { setEditingVap({ item: { ...defaultVAP }, index: -1 }); setIsNewVap(true); }}
-        onEdit={(item, index) => { setEditingVap({ item: { ...item }, index }); setIsNewVap(false); }}
+        onAdd={() => setEditingVap({ item: createDefaultVAP(), index: -1, isNew: true })}
+        onEdit={(item, index) => setEditingVap({ item: { ...item }, index, isNew: false })}
         onDelete={(_, index) => setDeletingVap(index)}
+        onClone={(item) => setEditingVap({ item: { ...item, name: item.name + '_copy' }, index: -1, isNew: true })}
         onReorder={(from, to) => reorderItems(VAP_PATH, from, to)}
       />
 
@@ -142,9 +135,10 @@ export default function FortiAP() {
         getRowKey={(item) => item.name}
         highlights={profileHighlights}
         onHighlight={(key, color) => setHighlight(PROFILE_PATH, key, color)}
-        onAdd={() => { setEditingProfile({ item: { ...defaultProfile }, index: -1 }); setIsNewProfile(true); }}
-        onEdit={(item, index) => { setEditingProfile({ item: { ...item }, index }); setIsNewProfile(false); }}
+        onAdd={() => setEditingProfile({ item: createDefaultWTPProfile(), index: -1, isNew: true })}
+        onEdit={(item, index) => setEditingProfile({ item: { ...item }, index, isNew: false })}
         onDelete={(_, index) => setDeletingProfile(index)}
+        onClone={(item) => setEditingProfile({ item: { ...item, name: 'Clone of ' + item.name }, index: -1, isNew: true })}
         onReorder={(from, to) => reorderItems(PROFILE_PATH, from, to)}
       />
 
@@ -159,29 +153,6 @@ export default function FortiAP() {
         onReorder={(from, to) => reorderItems(WTP_PATH, from, to)}
       />
 
-      {/* Edit Modals */}
-      {editingVap && (
-        <EditModal title="SSID / VAP" fields={vapFields} values={editingVap.item} isNew={isNewVap}
-          onChange={(key, val) => setEditingVap({ ...editingVap, item: { ...editingVap.item, [key]: val } })}
-          onSave={() => {
-            if (isNewVap) addItem(VAP_PATH, editingVap.item);
-            else updateItem(VAP_PATH, editingVap.index, editingVap.item);
-            setEditingVap(null);
-          }}
-          onCancel={() => setEditingVap(null)}
-        />
-      )}
-      {editingProfile && (
-        <EditModal title="AP Profile" fields={profileFields} values={editingProfile.item} isNew={isNewProfile}
-          onChange={(key, val) => setEditingProfile({ ...editingProfile, item: { ...editingProfile.item, [key]: val } })}
-          onSave={() => {
-            if (isNewProfile) addItem(PROFILE_PATH, editingProfile.item);
-            else updateItem(PROFILE_PATH, editingProfile.index, editingProfile.item);
-            setEditingProfile(null);
-          }}
-          onCancel={() => setEditingProfile(null)}
-        />
-      )}
       {editingWtp && (
         <EditModal title="Managed AP" fields={wtpFields} values={editingWtp.item} isNew={isNewWtp}
           onChange={(key, val) => setEditingWtp({ ...editingWtp, item: { ...editingWtp.item, [key]: val } })}

@@ -19,6 +19,56 @@ function line(depth: number, text: string): string {
   return INDENT.repeat(depth) + text + '\n';
 }
 
+// Always-quoted array (FortiGate quotes vap/channel references)
+function setArrQ(depth: number, key: string, arr: string[] | undefined): string {
+  if (!arr || arr.length === 0) return '';
+  return line(depth, `set ${key} ${arr.map((v) => `"${v}"`).join(' ')}`);
+}
+
+// Emit a "config radio-N ... end" block for an AP-profile radio.
+function exportRadio(name: string, r: import('../types/fortigate').WirelessRadio): string {
+  // Skip an all-default AP radio entirely (nothing meaningful to serialize).
+  const isEmptyAp = r.mode === 'ap' && r.band.length === 0 && r.vaps.length === 0 &&
+    r.vapSlots.length === 0 && r.channels.length === 0;
+  if (isEmptyAp) return '';
+
+  let out = line(2, `config ${name}`);
+  if (r.mode === 'disabled') {
+    out += setVal(3, 'mode', 'disabled');
+    out += line(2, 'end');
+    return out;
+  }
+  if (r.mode === 'monitor' || r.mode === 'sniffer') {
+    out += setVal(3, 'mode', r.mode);
+    if (r.widsProfile) out += setVal(3, 'wids-profile', r.widsProfile);
+    out += line(2, 'end');
+    return out;
+  }
+  // AP mode
+  if (r.band.length) out += setArr(3, 'band', r.band);
+  if (r.channelBonding) out += setVal(3, 'channel-bonding', r.channelBonding);
+  if (r.shortGuardInterval) out += setVal(3, 'short-guard-interval', true);
+  if (r.powerMode) out += setVal(3, 'power-mode', r.powerMode);
+  if (r.powerValue) out += setVal(3, 'power-value', r.powerValue);
+  if (r.autoPowerLevel) {
+    out += setVal(3, 'auto-power-level', true);
+    if (r.autoPowerHigh) out += setVal(3, 'auto-power-high', r.autoPowerHigh);
+    if (r.autoPowerLow) out += setVal(3, 'auto-power-low', r.autoPowerLow);
+  } else if (r.powerLevel !== 100) {
+    out += setVal(3, 'power-level', r.powerLevel);
+  }
+  if (!r.channelUtilization) out += setVal(3, 'channel-utilization', 'disable');
+  if (r.darrp) out += setVal(3, 'darrp', true);
+  if (r.arrpProfile) out += setVal(3, 'arrp-profile', r.arrpProfile);
+  if (r.vapAll) out += setVal(3, 'vap-all', r.vapAll);
+  if (r.vaps.length) out += setArrQ(3, 'vaps', r.vaps);
+  r.vapSlots.forEach((v, i) => { if (v) out += setVal(3, `vap${i + 1}`, v); });
+  if (r.channels.length) out += setArrQ(3, 'channel', r.channels);
+  if (r.widsProfile) out += setVal(3, 'wids-profile', r.widsProfile);
+  out += line(2, 'end');
+  return out;
+}
+
 function setVal(depth: number, key: string, val: string | number | boolean | undefined, skipEmpty = true): string {
   if (val === undefined || val === null) return '';
   if (typeof val === 'boolean') {
@@ -1274,12 +1324,28 @@ export function exportFortiConfig(config: FortigateConfig): string {
       out += line(1, `edit ${q(v.name)}`);
       out += setVal(2, 'ssid', v.ssid);
       if (v.securityMode !== 'open') out += setVal(2, 'security', v.securityMode);
-      out += setVal(2, 'passphrase', v.passphrase);
+      if (!v.dot11k) out += setVal(2, '80211k', 'disable');
+      if (!v.dot11v) out += setVal(2, '80211v', 'disable');
+      // Passphrase: preserve the "ENC <blob>" form verbatim (unquoted keyword).
+      if (v.passphrase) {
+        if (/^ENC\s/.test(v.passphrase)) out += line(2, `set passphrase ${v.passphrase}`);
+        else out += setVal(2, 'passphrase', v.passphrase);
+      }
+      if (v.localBridging) out += setVal(2, 'local-bridging', true);
       if (v.authServer) out += setVal(2, 'auth', v.authServer);
+      out += setVal(2, 'schedule', v.schedule);
       if (v.vlanid) out += setVal(2, 'vlanid', v.vlanid);
+      if (v.alias) out += setVal(2, 'alias', v.alias);
       if (v.maxClients) out += setVal(2, 'max-clients', v.maxClients);
       if (v.macFilter) out += setVal(2, 'mac-filter', true);
-      out += setVal(2, 'schedule', v.schedule);
+      if (v.rates11a.length) out += setArr(2, 'rates-11a', v.rates11a);
+      if (v.rates11bg.length) out += setArr(2, 'rates-11bg', v.rates11bg);
+      if (v.rates11acMcsMap) out += setVal(2, 'rates-11ac-mcs-map', v.rates11acMcsMap);
+      if (v.rates11axMcsMap) out += setVal(2, 'rates-11ax-mcs-map', v.rates11axMcsMap);
+      if (v.stickyClientRemove) out += setVal(2, 'sticky-client-remove', true);
+      if (v.stickyClient5g) out += setVal(2, 'sticky-client-threshold-5g', v.stickyClient5g);
+      if (v.stickyClient2g) out += setVal(2, 'sticky-client-threshold-2g', v.stickyClient2g);
+      if (v.beaconAdvertising.length) out += setArr(2, 'beacon-advertising', v.beaconAdvertising);
       out += setVal(2, 'comment', v.comment);
       out += line(1, 'next');
     }
@@ -1292,6 +1358,18 @@ export function exportFortiConfig(config: FortigateConfig): string {
     for (const p of config.wireless.wtpProfiles) {
       out += line(1, `edit ${q(p.name)}`);
       out += setVal(2, 'comment', p.comment);
+      if (p.platform || p.ddscan) {
+        out += line(2, 'config platform');
+        if (p.platform) out += setVal(3, 'type', p.platform);
+        if (p.ddscan) out += setVal(3, 'ddscan', true);
+        out += line(2, 'end');
+      }
+      if (p.handoffStaThresh) out += setVal(2, 'handoff-sta-thresh', p.handoffStaThresh);
+      if (p.frequencyHandoff) out += setVal(2, 'frequency-handoff', true);
+      if (p.apHandoff) out += setVal(2, 'ap-handoff', true);
+      out += exportRadio('radio-1', p.radio1);
+      out += exportRadio('radio-2', p.radio2);
+      out += exportRadio('radio-3', p.radio3);
       out += line(1, 'next');
     }
     out += 'end\n\n';

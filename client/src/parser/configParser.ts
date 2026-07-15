@@ -11,7 +11,7 @@ import {
   StaticRoute, PolicyRoute,
   BGPConfig, BGPNeighbor, BGPNetwork, BGPNeighborGroup, BGPNeighborRange,
   OSPFConfig, OSPFArea, OSPFNetwork, OSPFInterface,
-  WirelessVAP, WirelessWTPProfile, WirelessWTP,
+  WirelessVAP, WirelessWTPProfile, WirelessWTP, WirelessRadio,
   FirewallPolicy, FirewallAddress, FirewallAddressGroup,
   FirewallService, FirewallServiceGroup, FirewallSchedule,
   FirewallVIP, FirewallIPPool,
@@ -781,9 +781,50 @@ function mapWirelessVAPs(section: RawSection): WirelessVAP[] {
       schedule: str(p['schedule'], 'always'),
       maxClients: num(p['max-clients']),
       macFilter: bool(p['mac-filter']),
+      localBridging: bool(p['local-bridging']),
+      alias: str(p['alias']),
+      dot11k: bool(p['80211k'], true),
+      dot11v: bool(p['80211v'], true),
+      rates11a: strArr(p['rates-11a']),
+      rates11bg: strArr(p['rates-11bg']),
+      rates11acMcsMap: str(p['rates-11ac-mcs-map']),
+      rates11axMcsMap: str(p['rates-11ax-mcs-map']),
+      stickyClientRemove: bool(p['sticky-client-remove']),
+      stickyClient5g: str(p['sticky-client-threshold-5g']),
+      stickyClient2g: str(p['sticky-client-threshold-2g']),
+      beaconAdvertising: strArr(p['beacon-advertising']),
       comment: str(p['comment']),
     };
   });
+}
+
+function mapWirelessRadio(p: Record<string, string | string[]>, prefix: string): WirelessRadio {
+  const g = (k: string) => p[`${prefix}.${k}`];
+  const vapSlots: string[] = [];
+  for (let n = 1; n <= 8; n++) {
+    const v = g(`vap${n}`);
+    if (v !== undefined) vapSlots.push(str(v));
+  }
+  return {
+    mode: str(g('mode'), 'ap') as WirelessRadio['mode'],
+    band: strArr(g('band')),
+    channels: strArr(g('channel')),
+    channelBonding: str(g('channel-bonding')),
+    autoPowerLevel: bool(g('auto-power-level')),
+    autoPowerHigh: num(g('auto-power-high')),
+    autoPowerLow: num(g('auto-power-low')),
+    powerMode: str(g('power-mode')),
+    powerValue: num(g('power-value')),
+    powerLevel: num(g('power-level'), 100),
+    shortGuardInterval: bool(g('short-guard-interval')),
+    darrp: bool(g('darrp')),
+    arrpProfile: str(g('arrp-profile')),
+    channelUtilization: bool(g('channel-utilization'), true),
+    widsProfile: str(g('wids-profile')),
+    vapAll: str(g('vap-all')),
+    vaps: strArr(g('vaps')),
+    vapSlots,
+  };
 }
 
 function mapWTPProfiles(section: RawSection): WirelessWTPProfile[] {
@@ -792,16 +833,13 @@ function mapWTPProfiles(section: RawSection): WirelessWTPProfile[] {
     return {
       name: e.name,
       platform: str(p['platform.type']),
-      radio1Band: str(p['radio-1.band'], '802.11ax') as WirelessWTPProfile['radio1Band'],
-      radio1Channels: strArr(p['radio-1.channel']),
-      radio1Power: num(p['radio-1.power-level'], 100),
-      radio1VapAll: bool(p['radio-1.vap-all'], true),
-      radio1Vaps: strArr(p['radio-1.vaps']),
-      radio2Band: str(p['radio-2.band'], '802.11ax') as WirelessWTPProfile['radio2Band'],
-      radio2Channels: strArr(p['radio-2.channel']),
-      radio2Power: num(p['radio-2.power-level'], 100),
-      radio2VapAll: bool(p['radio-2.vap-all'], true),
-      radio2Vaps: strArr(p['radio-2.vaps']),
+      ddscan: bool(p['platform.ddscan']),
+      handoffStaThresh: num(p['handoff-sta-thresh']),
+      frequencyHandoff: bool(p['frequency-handoff']),
+      apHandoff: bool(p['ap-handoff']),
+      radio1: mapWirelessRadio(p, 'radio-1'),
+      radio2: mapWirelessRadio(p, 'radio-2'),
+      radio3: mapWirelessRadio(p, 'radio-3'),
       comment: str(p['comment']),
     };
   });

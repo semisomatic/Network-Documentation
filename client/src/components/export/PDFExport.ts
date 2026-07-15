@@ -163,6 +163,7 @@ export async function generatePDF(project: FortigateProject) {
   if (c.vpnIpsec.phase1.length) sections.push('IPsec VPN');
   if (c.system.dhcpServers.length) sections.push('DHCP Servers');
   if (c.wireless.vaps.length) sections.push('Wireless SSIDs');
+  if (c.wireless.wtpProfiles.length) sections.push('AP Profiles');
   if (c.wireless.wtps.length) sections.push('Managed Access Points');
   if (c.user.ldap.length) sections.push('LDAP Servers');
   if (c.user.radius.length) sections.push('RADIUS Servers');
@@ -486,6 +487,22 @@ export async function generatePDF(project: FortigateProject) {
     y = addTable(doc,
       ['Name', 'SSID', 'Security', 'VLAN', 'Broadcast', 'Max Clients', 'Comment'],
       c.wireless.vaps.map(v => [v.name, v.ssid, v.securityMode, v.vlanid ? String(v.vlanid) : '-', v.broadcast ? 'Yes' : 'No', v.maxClients ? String(v.maxClients) : '-', v.comment]),
+      y,
+    );
+  }
+  if (c.wireless.wtpProfiles.length) {
+    y = addSection(doc, 'AP Profiles', y, tocEntries);
+    const radioText = (r: typeof c.wireless.wtpProfiles[number]['radio1']) => {
+      if (r.mode === 'disabled') return 'Disabled';
+      if (r.mode === 'monitor' || r.mode === 'sniffer') return r.mode;
+      const parts = [r.band.join('/')];
+      if (r.vaps.length) parts.push(`SSIDs: ${r.vaps.join(', ')}`);
+      if (r.channels.length) parts.push(`ch ${r.channels.join(',')}`);
+      return parts.filter(Boolean).join(' | ') || 'AP';
+    };
+    y = addTable(doc,
+      ['Name', 'Platform', 'Radio 1', 'Radio 2', 'Radio 3'],
+      c.wireless.wtpProfiles.map(p => [p.name, p.platform, radioText(p.radio1), radioText(p.radio2), radioText(p.radio3)]),
       y,
     );
   }

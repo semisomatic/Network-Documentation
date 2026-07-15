@@ -1072,22 +1072,53 @@ export interface WirelessVAP {
   schedule: string;
   maxClients: number;
   macFilter: boolean;
+  localBridging: boolean;
+  alias: string;
+  dot11k: boolean;             // 802.11k radio resource measurement (default enable)
+  dot11v: boolean;             // 802.11v BSS transition (default enable)
+  rates11a: string[];          // set rates-11a
+  rates11bg: string[];         // set rates-11bg
+  rates11acMcsMap: string;     // set rates-11ac-mcs-map
+  rates11axMcsMap: string;     // set rates-11ax-mcs-map
+  stickyClientRemove: boolean;
+  stickyClient5g: string;      // threshold (dBm), e.g. "-72"
+  stickyClient2g: string;
+  beaconAdvertising: string[]; // name / model / serial-number
   comment: string;
+}
+
+// A single radio within an AP (wtp) profile
+export interface WirelessRadio {
+  mode: 'ap' | 'monitor' | 'disabled' | 'sniffer';
+  band: string[];              // e.g. ['802.11a','802.11n-5G','802.11ac-5G','802.11ax-5G']
+  channels: string[];          // set channel "36" "40" ...
+  channelBonding: string;      // 20MHz | 40MHz | 80MHz | 160MHz
+  autoPowerLevel: boolean;
+  autoPowerHigh: number;       // auto-power-high (dBm)
+  autoPowerLow: number;        // auto-power-low (dBm)
+  powerMode: string;           // 'dBm' | 'percentage'
+  powerValue: number;          // when power-mode dBm
+  powerLevel: number;          // percentage (default 100)
+  shortGuardInterval: boolean;
+  darrp: boolean;              // distributed automatic radio resource provisioning
+  arrpProfile: string;
+  channelUtilization: boolean; // default enable
+  widsProfile: string;         // wireless IDS profile (typ. on monitor radio)
+  vapAll: string;              // manual | tunnel | bridge | enable | disable
+  vaps: string[];              // set vaps "A" "B" ...
+  vapSlots: string[];          // set vap1..vap8 (ordered broadcast slots)
 }
 
 export interface WirelessWTPProfile {
   name: string;
-  platform: string;
-  radio1Band: '802.11a' | '802.11b' | '802.11g' | '802.11n' | '802.11ac' | '802.11ax' | '802.11n,g';
-  radio1Channels: string[];
-  radio1Power: number;
-  radio1VapAll: boolean;
-  radio1Vaps: string[];
-  radio2Band: '802.11a' | '802.11b' | '802.11g' | '802.11n' | '802.11ac' | '802.11ax' | '802.11n,g';
-  radio2Channels: string[];
-  radio2Power: number;
-  radio2VapAll: boolean;
-  radio2Vaps: string[];
+  platform: string;            // platform.type, e.g. 431F
+  ddscan: boolean;             // platform.ddscan (dedicated scan / dual-5GHz)
+  handoffStaThresh: number;    // handoff-sta-thresh
+  frequencyHandoff: boolean;
+  apHandoff: boolean;
+  radio1: WirelessRadio;
+  radio2: WirelessRadio;
+  radio3: WirelessRadio;
   comment: string;
 }
 
@@ -1107,6 +1138,35 @@ export interface WirelessConfig {
 }
 
 // --- Helper: Default factory functions ---
+
+export function createDefaultRadio(mode: WirelessRadio['mode'] = 'ap'): WirelessRadio {
+  return {
+    mode, band: [], channels: [], channelBonding: '', autoPowerLevel: false,
+    autoPowerHigh: 0, autoPowerLow: 0, powerMode: '', powerValue: 0, powerLevel: 100,
+    shortGuardInterval: false, darrp: false, arrpProfile: '', channelUtilization: true,
+    widsProfile: '', vapAll: '', vaps: [], vapSlots: [],
+  };
+}
+
+export function createDefaultVAP(): WirelessVAP {
+  return {
+    name: '', ssid: '', securityMode: 'wpa2-personal', passphrase: '', authServer: '',
+    vlanid: 0, broadcast: true, schedule: 'always', maxClients: 0, macFilter: false,
+    localBridging: false, alias: '', dot11k: true, dot11v: true,
+    rates11a: [], rates11bg: [], rates11acMcsMap: '', rates11axMcsMap: '',
+    stickyClientRemove: false, stickyClient5g: '', stickyClient2g: '',
+    beaconAdvertising: [], comment: '',
+  };
+}
+
+export function createDefaultWTPProfile(): WirelessWTPProfile {
+  return {
+    name: '', platform: '', ddscan: false, handoffStaThresh: 0,
+    frequencyHandoff: false, apHandoff: false,
+    radio1: createDefaultRadio(), radio2: createDefaultRadio(), radio3: createDefaultRadio('monitor'),
+    comment: '',
+  };
+}
 
 export function createDefaultConfig(): FortigateConfig {
   return {
@@ -1292,6 +1352,36 @@ export function migrateProject(raw: any): FortigateProject {
     }
     if (!project.config.wireless) {
       project.config.wireless = createDefaultConfig().wireless;
+    }
+    // Migrate wireless VAPs / AP profiles to the expanded (multi-radio) model
+    for (const v of project.config.wireless.vaps || []) {
+      const dv = createDefaultVAP();
+      for (const k of Object.keys(dv) as (keyof WirelessVAP)[]) {
+        if ((v as any)[k] === undefined) (v as any)[k] = (dv as any)[k];
+      }
+    }
+    for (const p of project.config.wireless.wtpProfiles || []) {
+      const anyP = p as any;
+      if (!anyP.radio1 || typeof anyP.radio1 !== 'object') {
+        // Old flat shape: radio1Band / radio1Channels / radio1Power / radio1VapAll / radio1Vaps
+        const conv = (band: any, channels: any, power: any, vapAll: any, vaps: any): WirelessRadio => ({
+          ...createDefaultRadio(),
+          band: band ? [String(band)] : [],
+          channels: channels || [],
+          powerLevel: typeof power === 'number' ? power : 100,
+          vapAll: vapAll === false ? 'manual' : '',
+          vaps: vaps || [],
+        });
+        anyP.radio1 = conv(anyP.radio1Band, anyP.radio1Channels, anyP.radio1Power, anyP.radio1VapAll, anyP.radio1Vaps);
+        anyP.radio2 = conv(anyP.radio2Band, anyP.radio2Channels, anyP.radio2Power, anyP.radio2VapAll, anyP.radio2Vaps);
+        anyP.radio3 = createDefaultRadio('monitor');
+      }
+      if (anyP.ddscan === undefined) anyP.ddscan = false;
+      if (anyP.handoffStaThresh === undefined) anyP.handoffStaThresh = 0;
+      if (anyP.frequencyHandoff === undefined) anyP.frequencyHandoff = false;
+      if (anyP.apHandoff === undefined) anyP.apHandoff = false;
+      delete anyP.radio1Band; delete anyP.radio1Channels; delete anyP.radio1Power; delete anyP.radio1VapAll; delete anyP.radio1Vaps;
+      delete anyP.radio2Band; delete anyP.radio2Channels; delete anyP.radio2Power; delete anyP.radio2VapAll; delete anyP.radio2Vaps;
     }
     const defaults = createDefaultConfig();
     if (!project.config.system.ha) project.config.system.ha = defaults.system.ha;
